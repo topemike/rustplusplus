@@ -21,7 +21,7 @@
 /*
  *  Health monitor: warns in Discord when the bot is about to go "blind".
  *  - FCM credentials that are about to expire or have expired (no more pairing,
- *    smart alarm, death or login notifications).
+ *    smart alarm, death or login notifications): private message to the owner of the credentials.
  *  - Rust+ connection lost and not recovered after a while.
  */
 
@@ -62,6 +62,28 @@ async function sendHealthMessage(client, guildId, color, title, description, men
     return true;
 }
 
+/**
+ *  Private message (DM) to the owner of the credentials: credential warnings are an admin matter
+ *  and are not posted in the team channels.
+ *  @return {boolean} true if the message was delivered.
+ */
+async function sendPrivateMessage(client, guildId, userId, color, title, description) {
+    if (!userId) return false;
+    try {
+        const guild = client.guilds.cache.get(guildId);
+        const options = { color: color, title: title, description: description, timestamp: true };
+        if (guild && guild.name) options.footer = { text: guild.name };
+        const user = await client.users.fetch(userId);
+        await user.send({ embeds: [DiscordEmbeds.getEmbed(options)] });
+        return true;
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'warningCap'),
+            `Health monitor: could not send a private message to ${userId} (DMs closed?): ${e}`);
+        return false;
+    }
+}
+
 async function checkCredentials(client, guildId) {
     let credentials;
     try {
@@ -91,34 +113,29 @@ async function checkCredentials(client, guildId) {
         if (remaining <= 0) {
             if (warned.expired === expire) continue;
 
-            const sent = await sendHealthMessage(client, guildId, Constants.COLOR_INACTIVE,
+            await sendPrivateMessage(client, guildId, userId, Constants.COLOR_INACTIVE,
                 client.intlGet(guildId, isHoster ? 'healthCredentialsExpiredHosterTitle' :
                     'healthCredentialsExpiredTitle'),
                 client.intlGet(guildId, isHoster ? 'healthCredentialsExpiredHosterDesc' :
-                    'healthCredentialsExpiredDesc', { steamId: steamId }),
-                userId);
+                    'healthCredentialsExpiredDesc', { steamId: steamId }));
 
-            if (sent) {
-                state.credentialWarnings[steamId] = { soon: expire, expired: expire };
-                changed = true;
-            }
+            /* Marked even if the DM could not be delivered, so it is not retried every minute */
+            state.credentialWarnings[steamId] = { soon: expire, expired: expire };
+            changed = true;
         }
         else if (remaining <= warnBeforeSeconds) {
             if (warned.soon === expire) continue;
 
-            const sent = await sendHealthMessage(client, guildId, Constants.COLOR_CARGO_SHIP_ENTERS_EGRESS_STAGE,
+            await sendPrivateMessage(client, guildId, userId, Constants.COLOR_CARGO_SHIP_ENTERS_EGRESS_STAGE,
                 client.intlGet(guildId, 'healthCredentialsExpireSoonTitle', { time: formatDuration(remaining) }),
                 client.intlGet(guildId, isHoster ? 'healthCredentialsExpireSoonHosterDesc' :
                     'healthCredentialsExpireSoonDesc', {
                     steamId: steamId,
                     date: `<t:${expire}:F>`
-                }),
-                userId);
+                }));
 
-            if (sent) {
-                state.credentialWarnings[steamId] = { soon: expire, expired: warned.expired || null };
-                changed = true;
-            }
+            state.credentialWarnings[steamId] = { soon: expire, expired: warned.expired || null };
+            changed = true;
         }
     }
 
