@@ -22,6 +22,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const Info = require('../structures/Info');
 const Map = require('../structures/Map');
 const PollingHandler = require('../handlers/pollingHandler.js');
+const ServerLifecycle = require('../util/serverLifecycle.js');
 
 module.exports = {
     name: 'connected',
@@ -62,8 +63,10 @@ module.exports = {
         const info = await rustplus.getInfoAsync();
         if (await rustplus.isResponseValid(info)) rustplus.info = new Info(info.info)
 
+        let wipeDetected = false;
         if (client.rustplusMaps.hasOwnProperty(guildId)) {
             if (client.isJpgImageChanged(guildId, map.map)) {
+                wipeDetected = true;
                 rustplus.map = new Map(map.map, rustplus);
 
                 await rustplus.map.writeMap(false, true);
@@ -104,6 +107,15 @@ module.exports = {
         await require('../discordTools/SetupStorageMonitors')(client, rustplus);
         rustplus.isNewConnection = false;
         rustplus.loadMarkers();
+
+        /* Trackers that follow the active server move to it; after a wipe, offer to clean old devices */
+        try {
+            await ServerLifecycle.followActiveServer(client, guildId);
+            if (wipeDetected) await ServerLifecycle.sendWipeCleanupOffer(client, guildId, serverId);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Server lifecycle: ${e}`, 'error');
+        }
 
         await PollingHandler.pollingHandler(rustplus, client);
         rustplus.pollingTaskId = setInterval(PollingHandler.pollingHandler, client.pollingIntervalMs, rustplus, client);

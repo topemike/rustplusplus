@@ -21,6 +21,7 @@
 const Discord = require('discord.js');
 
 const Config = require('../../config');
+const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
@@ -1124,6 +1125,51 @@ module.exports = async (client, interaction) => {
         }));
 
         await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
+    }
+    else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerFollowServer')) {
+        const ids = JSON.parse(interaction.customId.replace('TrackerFollowServer', ''));
+        const tracker = instance.trackers[ids.trackerId];
+
+        if (!tracker) {
+            await interaction.message.delete();
+            return;
+        }
+
+        tracker.followServer = tracker.followServer === false;
+        client.setInstance(guildId, instance);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `${tracker.followServer}`
+        }));
+
+        await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
+        if (tracker.followServer) await require('../util/serverLifecycle.js').followActiveServer(client, guildId);
+    }
+    else if (interaction.customId.startsWith('WipeCleanup')) {
+        const ids = JSON.parse(interaction.customId.replace('WipeCleanup', ''));
+
+        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+            interaction.deferUpdate();
+            return;
+        }
+
+        const removed = await require('../util/serverLifecycle.js').cleanupUnreachableDevices(
+            client, guildId, ids.serverId);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `wipe cleanup ${JSON.stringify(removed)}`
+        }));
+
+        await client.interactionUpdate(interaction, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_ACTIVE,
+                title: client.intlGet(guildId, 'wipeCleanupDoneTitle'),
+                description: client.intlGet(guildId, 'wipeCleanupDoneDesc', removed)
+            })],
+            components: []
+        });
     }
     else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerSchedule')) {
         const ids = JSON.parse(interaction.customId.replace('TrackerSchedule', ''));
