@@ -164,6 +164,7 @@ module.exports = (client, guild) => {
             if (!instance.informationMessageId.hasOwnProperty('server')) instance.informationMessageId.server = null;
             if (!instance.informationMessageId.hasOwnProperty('event')) instance.informationMessageId.event = null;
             if (!instance.informationMessageId.hasOwnProperty('team')) instance.informationMessageId.team = null;
+            if (!instance.informationMessageId.hasOwnProperty('upkeep')) instance.informationMessageId.upkeep = null;
             if (!instance.informationMessageId.hasOwnProperty('team'))
                 instance.informationMessageId.battlemetricsPlayers = null;
         }

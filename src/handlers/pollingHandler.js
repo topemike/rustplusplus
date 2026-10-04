@@ -29,6 +29,7 @@ const TeamHandler = require('../handlers/teamHandler.js');
 const Time = require('../structures/Time');
 const MarketHandler = require('../handlers/marketHandler.js');
 const TimeHandler = require('../handlers/timeHandler.js');
+const UpkeepBoardHandler = require('../handlers/upkeepBoardHandler.js');
 const VendingMachines = require('../handlers/vendingMachineHandler.js');
 
 module.exports = {
@@ -75,5 +76,11 @@ module.exports = {
         await InformationHandler.handler(rustplus);
         await StorageMonitorHandler.handler(rustplus, client);
         await SmartAlarmHandler.handler(rustplus, client);
+        try {
+            await UpkeepBoardHandler.handler(rustplus, client);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Upkeep board: ${e}`, 'error');
+        }
     },
 };

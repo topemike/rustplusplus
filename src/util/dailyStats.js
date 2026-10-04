@@ -22,7 +22,7 @@
  *  Daily summary: what happened in the last 24 hours, posted once a day in the activity channel
  *  (and on demand with /resumen).
  *  - Events (counted from the event notifications), raids, tracked clans, Tool Cupboard upkeep
- *    and credential expiry.
+ *    (credentials are covered by the health monitor).
  *  Records are kept per guild in instances/dailyStats/<guildId>.json (last 48 hours).
  */
 
@@ -31,8 +31,6 @@ const Path = require('path');
 
 const Config = require('../../config');
 const Constants = require('./constants.js');
-const CredentialUtils = require('./credentialUtils.js');
-const InstanceUtils = require('./instanceUtils.js');
 const Timer = require('./timer');
 
 const DIR = Path.join(__dirname, '..', '..', 'instances', 'dailyStats');
@@ -162,21 +160,6 @@ function upkeepLines(client, guildId, instance, rustplus, now) {
     return lines;
 }
 
-function credentialLine(client, guildId, now) {
-    try {
-        const credentials = InstanceUtils.readCredentialsFile(guildId);
-        const hoster = credentials.hoster ? credentials[credentials.hoster] : null;
-        if (!hoster) return null;
-        const expire = CredentialUtils.toEpochSeconds(hoster.expire_date);
-        if (expire === null) return null;
-        return client.intlGet(guildId, expire * 1000 < now ? 'summaryCredentialsExpired' : 'summaryCredentials',
-            { date: `<t:${expire}:R>` });
-    }
-    catch (e) {
-        return null;
-    }
-}
-
 /**
  *  Builds the summary of the last 24 hours.
  *  @return {Object} { title, fields: [{ name, value }] }
@@ -211,8 +194,6 @@ function buildSummary(client, guildId, now = Date.now()) {
     const upkeep = upkeepLines(client, guildId, instance, rustplus, now);
     if (upkeep.length) fields.push({ name: intl('summaryUpkeepTitle'), value: upkeep.join('\n').slice(0, 1024) });
 
-    const cred = credentialLine(client, guildId, now);
-    if (cred) fields.push({ name: intl('summaryBotTitle'), value: cred });
 
     const server = instance.activeServer !== null ? instance.serverList[instance.activeServer] : null;
     return {
