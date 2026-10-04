@@ -209,6 +209,25 @@ module.exports = {
         return modal;
     },
 
+    getMarketBoardAddModal(guildId) {
+        const modal = module.exports.getModal({
+            customId: 'MarketBoardAdd',
+            title: Client.client.intlGet(guildId, 'marketBoardAddTitle')
+        });
+
+        modal.addComponents(
+            new Discord.ActionRowBuilder().addComponents(TextInput.getTextInput({
+                customId: 'MarketBoardItems',
+                label: Client.client.intlGet(guildId, 'marketBoardAddLabel'),
+                placeholder: 'hq, low, carbon, ak, m249, c4, rockets',
+                style: Discord.TextInputStyle.Paragraph,
+                required: true
+            }))
+        );
+
+        return modal;
+    },
+
     getSmartAlarmEditModal(guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];

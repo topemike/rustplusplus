@@ -106,11 +106,5 @@
         "discord": true,
         "inGame": false,
         "voice": true
-    },
-    "marketBargainSetting": {
-        "image": "vending_machine_logo.png",
-        "discord": true,
-        "inGame": true,
-        "voice": false
     }
 }

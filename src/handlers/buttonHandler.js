@@ -1126,6 +1126,23 @@ module.exports = async (client, interaction) => {
 
         await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
     }
+    else if (interaction.customId === 'MarketBoardAdd') {
+        const modal = DiscordModals.getMarketBoardAddModal(guildId);
+        await interaction.showModal(modal);
+    }
+    else if (interaction.customId.startsWith('MarketBoardRemove')) {
+        const ids = JSON.parse(interaction.customId.replace('MarketBoardRemove', ''));
+        const removed = await require('./marketHandler.js').removeEntry(client, guildId, ids.id);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `market board remove ${ids.id}: ${removed}`
+        }));
+
+        if (!removed) {
+            try { await interaction.message.delete(); } catch (e) { /* already gone */ }
+        }
+    }
     else if (interaction.customId.startsWith('WipeCleanup')) {
         const ids = JSON.parse(interaction.customId.replace('WipeCleanup', ''));
 

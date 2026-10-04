@@ -44,7 +44,8 @@ module.exports = (client, guild) => {
                 alarms: null,
                 storageMonitors: null,
                 activity: null,
-                trackers: null
+                trackers: null,
+                market: null
             },
             informationMessageId: {
                 map: null,
@@ -128,7 +129,8 @@ module.exports = (client, guild) => {
                 alarms: null,
                 storageMonitors: null,
                 activity: null,
-                trackers: null
+                trackers: null,
+                market: null
             }
         }
         else {
@@ -145,6 +147,7 @@ module.exports = (client, guild) => {
             if (!instance.channelId.hasOwnProperty('storageMonitors')) instance.channelId.storageMonitors = null;
             if (!instance.channelId.hasOwnProperty('activity')) instance.channelId.activity = null;
             if (!instance.channelId.hasOwnProperty('trackers')) instance.channelId.trackers = null;
+            if (!instance.channelId.hasOwnProperty('market')) instance.channelId.market = null;
         }
 
         if (!instance.hasOwnProperty('informationMessageId')) {

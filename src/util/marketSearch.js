@@ -23,7 +23,7 @@
  *  - Understands Rust slang and Spanish ("ak", "semi", "hq", "low grade", "azufre", "semilla"...),
  *    partial words ("seed", "berry") and falls back to the closest item name.
  *  - Lists every offer with unit price and location, cheapest first, and who buys the item.
- *  - Watch list: notify new offers and price changes of chosen items, optionally only below a price.
+ *  - Used by /buscar, !buscar and the #market board.
  */
 
 /* Slang / Spanish -> exact item names. A value starting with '~' is a word to search inside names. */
@@ -311,112 +311,12 @@ function formatOffersInGame(items, offers, perItem = 3, maxItems = 3) {
     return lines;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Watch list ("gangas")                                                      */
-/* ------------------------------------------------------------------------- */
-
-/*
- *  Each rule: { itemId, currencyId (null = any currency), max (null = any price, per unit) }.
- *  The list starts empty: the team decides what to watch and what price is worth it.
- */
-
-function ruleMatches(rule, offer) {
-    if (offer.itemIsBlueprint || offer.itemId !== `${rule.itemId}`) return false;
-    if (rule.currencyId !== null && rule.currencyId !== undefined && offer.currencyId !== `${rule.currencyId}`) {
-        return false;
-    }
-    if (rule.max !== null && rule.max !== undefined && offer.unitPrice > rule.max) return false;
-    return true;
-}
-
-/**
- *  Offers on the map matching the watch list.
- *  @return {Array} [{ rule, offer }] cheapest first per item.
- */
-function findBargains(rules, vendingMachines) {
-    const hits = [];
-    const seen = new Set();
-    for (const rule of rules || []) {
-        const { sell } = collectOffers(vendingMachines, [rule.itemId], 'sell');
-        for (const o of sell) {
-            if (!ruleMatches(rule, o)) continue;
-            const key = `${o.vmKey}|${o.itemId}|${o.currencyId}|${o.cost}|${o.quantity}`;
-            if (seen.has(key)) continue;   /* several rules can match the same offer */
-            seen.add(key);
-            hits.push({ rule: rule, offer: o });
-        }
-    }
-    return hits;
-}
-
-const lastPrices = new Object();   /* guildId -> Map(vm|item|currency -> { cost, quantity, unitPrice }) */
-
-/**
- *  Changes since the previous call: new offers and price changes of watched items.
- *  @return {Array} [{ rule, offer, previous|null }] (previous is set for price changes)
- */
-function newBargains(guildId, rules, vendingMachines) {
-    const first = !lastPrices[guildId];
-    if (first) lastPrices[guildId] = new Map();
-    const known = lastPrices[guildId];
-    const current = new Map();
-    const changes = [];
-
-    for (const hit of findBargains(rules, vendingMachines)) {
-        const o = hit.offer;
-        const key = `${o.vmKey}|${o.itemId}|${o.currencyId}`;
-        const price = { cost: o.cost, quantity: o.quantity, unitPrice: o.unitPrice };
-        current.set(key, price);
-
-        const before = known.get(key);
-        if (!before) changes.push({ rule: hit.rule, offer: o, previous: null });
-        else if (before.cost !== o.cost || before.quantity !== o.quantity) {
-            changes.push({ rule: hit.rule, offer: o, previous: before });
-        }
-    }
-
-    lastPrices[guildId] = current;
-    return first ? [] : changes;
-}
-
-/**
- *  Forget known prices (e.g. after the watch list changes), so the next poll only primes them.
- */
-function resetKnownPrices(guildId) {
-    delete lastPrices[guildId];
-}
-
-/**
- *  Records the current offers of one rule as known (used right after adding it).
- */
-function primeRule(guildId, rule, vendingMachines) {
-    if (!lastPrices[guildId]) return;
-    for (const hit of findBargains([rule], vendingMachines)) {
-        const o = hit.offer;
-        lastPrices[guildId].set(`${o.vmKey}|${o.itemId}|${o.currencyId}`,
-            { cost: o.cost, quantity: o.quantity, unitPrice: o.unitPrice });
-    }
-}
-
-function ensureBargainList(instance) {
-    if (Array.isArray(instance.marketBargains)) return false;
-    instance.marketBargains = [];
-    return true;
-}
-
 module.exports = {
     ALIASES: ALIASES,
-    ensureBargainList: ensureBargainList,
-    ruleMatches: ruleMatches,
-    findBargains: findBargains,
-    newBargains: newBargains,
-    resetKnownPrices: resetKnownPrices,
-    primeRule: primeRule,
     normalize: normalize,
     resolveQuery: resolveQuery,
     collectOffers: collectOffers,
     formatOffersDiscord: formatOffersDiscord,
     formatOffersInGame: formatOffersInGame,
-    formatNumber: formatNumber,
-    _reset: () => { for (const k of Object.keys(lastPrices)) delete lastPrices[k]; }
+    formatNumber: formatNumber
 };
