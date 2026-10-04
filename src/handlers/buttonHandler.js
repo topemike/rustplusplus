@@ -828,6 +828,25 @@ module.exports = async (client, interaction) => {
         const modal = DiscordModals.getSmartAlarmEditModal(guildId, ids.serverId, ids.entityId);
         await interaction.showModal(modal);
     }
+    else if (interaction.customId.startsWith('StorageMonitorWatch')) {
+        const ids = JSON.parse(interaction.customId.replace('StorageMonitorWatch', ''));
+        const server = instance.serverList[ids.serverId];
+
+        if (!server || (server && !server.storageMonitors.hasOwnProperty(ids.entityId))) {
+            await interaction.message.delete();
+            return;
+        }
+
+        server.storageMonitors[ids.entityId].watch = !server.storageMonitors[ids.entityId].watch;
+        client.setInstance(guildId, instance);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `${server.storageMonitors[ids.entityId].watch}`
+        }));
+
+        await DiscordMessages.sendStorageMonitorMessage(guildId, ids.serverId, ids.entityId, interaction);
+    }
     else if (interaction.customId.startsWith('StorageMonitorToolCupboardEveryone')) {
         const ids = JSON.parse(interaction.customId.replace('StorageMonitorToolCupboardEveryone', ''));
         const server = instance.serverList[ids.serverId];
