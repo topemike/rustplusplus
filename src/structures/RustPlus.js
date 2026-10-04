@@ -26,6 +26,7 @@ const Translate = require('translate');
 const Client = require('../../index.ts');
 const Config = require('../../config');
 const Constants = require('../util/constants.js');
+const DailyStats = require('../util/dailyStats.js');
 const Decay = require('../util/decay.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds');
 const DiscordMessages = require('../discordTools/discordMessages.js');
@@ -278,6 +279,11 @@ class RustPlus extends RustPlusLib {
 
     async sendEvent(setting, text, event, embed_color, firstPoll = false, image = null) {
         const img = (image !== null) ? image : setting.image;
+
+        if (!firstPoll) {
+            const settingKey = Object.keys(this.notificationSettings).find(k => this.notificationSettings[k] === setting);
+            DailyStats.recordEvent(this.guildId, settingKey, text);
+        }
 
         this.updateEvents(event, text);
 

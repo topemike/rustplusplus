@@ -30,7 +30,8 @@ const Path = require('path');
 const Config = require('../../config');
 
 const ROOT = Path.join(__dirname, '..', '..');
-const SOURCES = ['instances', 'credentials', Path.join('instances', 'trackerHistory')];
+const SOURCES = ['instances', 'credentials', Path.join('instances', 'trackerHistory'),
+    Path.join('instances', 'dailyStats')];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function backupDir() {

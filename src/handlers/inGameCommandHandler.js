@@ -23,6 +23,7 @@ const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const SmartSwitchHandler = require('./smartSwitchHandler.js');
 
 const MarketHandler = require('./marketHandler.js');
+const DeepSeaHandler = require('./deepSeaHandler.js');
 
 module.exports = {
     inGameCommandHandler: async function (rustplus, client, message) {
@@ -114,6 +115,9 @@ module.exports = {
             (commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarker')} `) ||
                 commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxMarkers')}`)) {
             rustplus.sendInGameMessage(await rustplus.getCommandMarker(command, callerSteamId));
+        }
+        else if (DeepSeaHandler.command(rustplus, client, command) !== null) {
+            rustplus.sendInGameMessage(DeepSeaHandler.command(rustplus, client, command));
         }
         else if (MarketHandler.getCommandFind(rustplus, client, command) !== null) {
             rustplus.sendInGameMessage(MarketHandler.getCommandFind(rustplus, client, command));

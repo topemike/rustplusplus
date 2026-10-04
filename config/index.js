@@ -73,6 +73,20 @@ module.exports = {
         /* Only alert while every teammate is offline (teammates taking items is not an alert) */
         boxAlertOnlyWhenTeamOffline: process.env.RPP_BOX_ALERT_ONLY_TEAM_OFFLINE !== 'false'
     },
+    deepSea: {
+        /* Default Deep Sea cycle (learned per server from the open/closed marks) */
+        openMinutes: parseInt(process.env.RPP_DEEPSEA_OPEN_MINUTES) || 180,
+        closedMinutes: parseInt(process.env.RPP_DEEPSEA_CLOSED_MINUTES) || 90,
+        /* Warnings before opening and closing (minutes) */
+        warnMinutes: (process.env.RPP_DEEPSEA_WARN_MINUTES || '10,5').split(',')
+            .map(m => parseInt(m)).filter(m => m > 0)
+    },
+    dailySummary: {
+        /* Daily summary of the last 24 hours in the activity channel */
+        enabled: process.env.RPP_DAILY_SUMMARY_ENABLED !== 'false',
+        /* Local hour (RPP_TIMEZONE) when it is posted */
+        hour: parseInt(process.env.RPP_DAILY_SUMMARY_HOUR) >= 0 ? parseInt(process.env.RPP_DAILY_SUMMARY_HOUR) : 10
+    },
     backup: {
         /* Daily backup of instances/ and credentials/ */
         enabled: process.env.RPP_BACKUP_ENABLED !== 'false',
