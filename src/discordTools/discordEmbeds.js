@@ -23,6 +23,7 @@ const Discord = require('discord.js');
 const Client = require('../../index.ts');
 const Constants = require('../util/constants.js');
 const CredentialUtils = require('../util/credentialUtils.js');
+const RaidTargets = require('../util/raidTargets.js');
 const DiscordTools = require('./discordTools.js');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Timer = require('../util/timer');
@@ -270,6 +271,17 @@ module.exports = {
             }, {
                 name: Client.client.intlGet(guildId, 'customCommand'),
                 value: `\`${instance.generalSettings.prefix}${entity.command}\``,
+                inline: false
+            }, {
+                name: Client.client.intlGet(guildId, 'raidModeField'),
+                value: Client.client.intlGet(guildId, entity.raidMode !== false ? 'raidModeOnDesc' : 'raidModeOffDesc'),
+                inline: false
+            }, {
+                name: Client.client.intlGet(guildId, 'alarmActionsField'),
+                value: entity.actions ? Client.client.intlGet(guildId, 'alarmActionsDesc', {
+                    targets: RaidTargets.describeActionTargets(instance.serverList[serverId], entity) || '-',
+                    minutes: entity.actions.holdMinutes
+                }) : Client.client.intlGet(guildId, 'alarmActionsNone'),
                 inline: false
             }],
             timestamp: true

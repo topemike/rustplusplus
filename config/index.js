@@ -54,6 +54,16 @@ module.exports = {
         groupLoginWindowMinutes: parseInt(process.env.RPP_TRACKER_GROUP_LOGIN_WINDOW_MINUTES) || 10,
         groupLoginCooldownMinutes: parseInt(process.env.RPP_TRACKER_GROUP_LOGIN_COOLDOWN_MINUTES) || 30
     },
+    raid: {
+        /* Grouped raid alarms: reminder every N minutes while nobody acknowledges */
+        reminderMinutes: parseInt(process.env.RPP_RAID_REMINDER_MINUTES) || 5,
+        /* The raid is considered over after N minutes without alarm triggers */
+        quietMinutes: parseInt(process.env.RPP_RAID_QUIET_MINUTES) || 10,
+        /* Minimum seconds between edits of the raid message */
+        editThrottleSeconds: parseInt(process.env.RPP_RAID_EDIT_THROTTLE_SECONDS) || 5,
+        /* Default minutes that alarm actions keep switches on */
+        defaultHoldMinutes: parseInt(process.env.RPP_RAID_HOLD_MINUTES) || 15
+    },
     backup: {
         /* Daily backup of instances/ and credentials/ */
         enabled: process.env.RPP_BACKUP_ENABLED !== 'false',

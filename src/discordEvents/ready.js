@@ -83,5 +83,6 @@ module.exports = {
 
         require('../util/healthMonitor.js').start(client);
         require('../util/backup.js').start(client);
+        require('../handlers/raidHandler.js').start(client);
     },
 };

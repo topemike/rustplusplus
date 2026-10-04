@@ -21,7 +21,9 @@
 const Discord = require('discord.js');
 
 const Client = require('../../index.ts');
+const Config = require('../../config');
 const Constants = require('../util/constants.js');
+const RaidTargets = require('../util/raidTargets.js');
 const TextInput = require('./discordTextInputs.js');
 
 module.exports = {
@@ -236,6 +238,22 @@ module.exports = {
                 customId: 'SmartAlarmCommand',
                 label: Client.client.intlGet(guildId, 'customCommand'),
                 value: entity.command,
+                style: Discord.TextInputStyle.Short
+            })),
+            new Discord.ActionRowBuilder().addComponents(TextInput.getTextInput({
+                customId: 'SmartAlarmActions',
+                label: Client.client.intlGet(guildId, 'alarmActionsLabel'),
+                value: RaidTargets.describeActionTargets(instance.serverList[serverId], entity),
+                placeholder: Client.client.intlGet(guildId, 'alarmActionsPlaceholder'),
+                required: false,
+                style: Discord.TextInputStyle.Short
+            })),
+            new Discord.ActionRowBuilder().addComponents(TextInput.getTextInput({
+                customId: 'SmartAlarmHoldMinutes',
+                label: Client.client.intlGet(guildId, 'alarmHoldMinutesLabel'),
+                value: `${entity.actions && entity.actions.holdMinutes ? entity.actions.holdMinutes :
+                    Config.raid.defaultHoldMinutes}`,
+                required: false,
                 style: Discord.TextInputStyle.Short
             }))
         );
