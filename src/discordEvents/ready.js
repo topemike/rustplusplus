@@ -85,5 +85,6 @@ module.exports = {
         require('../util/backup.js').start(client);
         require('../handlers/raidHandler.js').start(client);
         require('../handlers/deepSeaHandler.js').start(client);
+        require('../handlers/dailySummaryHandler.js').start(client);
     },
 };

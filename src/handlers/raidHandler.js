@@ -271,6 +271,12 @@ async function tick(client, now = Date.now()) {
             if (now - incident.lastTriggerAt >= s.quietMs) {
                 incident.endedAt = now;
                 await sendOrEditIncident(client, guildId, incident, false);
+                require('../util/dailyStats.js').recordRaid(guildId, {
+                    start: incident.startedAt,
+                    end: incident.lastTriggerAt,
+                    count: incident.count,
+                    alarms: Object.values(incident.alarms).map(a => a.name).join(', ')
+                });
 
                 const instance = client.getInstance(guildId);
                 const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;

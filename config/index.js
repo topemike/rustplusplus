@@ -81,6 +81,12 @@ module.exports = {
         warnMinutes: (process.env.RPP_DEEPSEA_WARN_MINUTES || '10,5').split(',')
             .map(m => parseInt(m)).filter(m => m > 0)
     },
+    dailySummary: {
+        /* Daily summary of the last 24 hours in the activity channel */
+        enabled: process.env.RPP_DAILY_SUMMARY_ENABLED !== 'false',
+        /* Local hour (RPP_TIMEZONE) when it is posted */
+        hour: parseInt(process.env.RPP_DAILY_SUMMARY_HOUR) >= 0 ? parseInt(process.env.RPP_DAILY_SUMMARY_HOUR) : 10
+    },
     backup: {
         /* Daily backup of instances/ and credentials/ */
         enabled: process.env.RPP_BACKUP_ENABLED !== 'false',
