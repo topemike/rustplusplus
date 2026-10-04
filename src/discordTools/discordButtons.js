@@ -272,8 +272,15 @@ module.exports = {
 
     getStorageMonitorContainerButton: function (guildId, serverId, entityId) {
         const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const instance = Client.client.getInstance(guildId);
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : null;
 
         return new Discord.ActionRowBuilder().addComponents(
+            module.exports.getButton({
+                customId: `StorageMonitorWatch${identifier}`,
+                label: Client.client.intlGet(guildId, 'watchCap'),
+                style: entity && entity.watch ? SUCCESS : DANGER
+            }),
             module.exports.getButton({
                 customId: `StorageMonitorEdit${identifier}`,
                 label: Client.client.intlGet(guildId, 'editCap'),

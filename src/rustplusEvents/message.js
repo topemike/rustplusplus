@@ -22,6 +22,7 @@ const CommandHandler = require('../handlers/inGameCommandHandler.js');
 const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const InGameChatHandler = require('../handlers/inGameChatHandler.js');
+const BaseWatchHandler = require('../handlers/baseWatchHandler.js');
 const RaidHandler = require('../handlers/raidHandler.js');
 const SmartSwitchGroupHandler = require('../handlers/smartSwitchGroupHandler.js');
 const TeamChatHandler = require("../handlers/teamChatHandler.js");
@@ -217,6 +218,8 @@ async function messageBroadcastEntityChangedStorageMonitor(rustplus, client, mes
         setTimeout(updateToolCupboard.bind(null, rustplus, client, message), 2000);
     }
     else {
+        const prevItems = rustplus.storageMonitors.hasOwnProperty(entityId) ?
+            rustplus.storageMonitors[entityId].items : null;
         rustplus.storageMonitors[entityId] = {
             items: message.broadcast.entityChanged.payload.items,
             expiry: message.broadcast.entityChanged.payload.protectionExpiry,
@@ -237,6 +240,9 @@ async function messageBroadcastEntityChangedStorageMonitor(rustplus, client, mes
         }
         client.setInstance(rustplus.guildId, instance);
 
+        await BaseWatchHandler.onStorageUpdate(client, rustplus, entityId, prevItems,
+            message.broadcast.entityChanged.payload);
+
         await DiscordMessages.sendStorageMonitorMessage(rustplus.guildId, serverId, entityId);
     }
 }
@@ -251,6 +257,8 @@ async function updateToolCupboard(rustplus, client, message) {
     client.setInstance(rustplus.guildId, instance);
 
     if (server.storageMonitors[entityId].reachable) {
+        const prevItems = rustplus.storageMonitors.hasOwnProperty(entityId) ?
+            rustplus.storageMonitors[entityId].items : null;
         rustplus.storageMonitors[entityId] = {
             items: info.entityInfo.payload.items,
             expiry: info.entityInfo.payload.protectionExpiry,
@@ -275,6 +283,8 @@ async function updateToolCupboard(rustplus, client, message) {
             server.storageMonitors[entityId].decaying = false;
         }
         client.setInstance(rustplus.guildId, instance);
+
+        await BaseWatchHandler.onStorageUpdate(client, rustplus, entityId, prevItems, info.entityInfo.payload);
     }
 
     await DiscordMessages.sendStorageMonitorMessage(rustplus.guildId, rustplus.serverId, entityId);

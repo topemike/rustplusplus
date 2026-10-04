@@ -64,6 +64,15 @@ module.exports = {
         /* Default minutes that alarm actions keep switches on */
         defaultHoldMinutes: parseInt(process.env.RPP_RAID_HOLD_MINUTES) || 15
     },
+    baseWatch: {
+        /* Tool Cupboard upkeep warnings (hours left), comma separated */
+        upkeepWarnHours: (process.env.RPP_UPKEEP_WARN_HOURS || '24,6,1').split(',')
+            .map(h => parseFloat(h)).filter(h => h > 0),
+        /* Watched containers: alert when at least this % of the items disappears at once */
+        boxDropPercent: parseInt(process.env.RPP_BOX_DROP_PERCENT) || 30,
+        /* Only alert while every teammate is offline (teammates taking items is not an alert) */
+        boxAlertOnlyWhenTeamOffline: process.env.RPP_BOX_ALERT_ONLY_TEAM_OFFLINE !== 'false'
+    },
     backup: {
         /* Daily backup of instances/ and credentials/ */
         enabled: process.env.RPP_BACKUP_ENABLED !== 'false',

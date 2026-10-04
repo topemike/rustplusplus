@@ -19,6 +19,7 @@
 */
 
 const Constants = require('../util/constants.js');
+const BaseWatchHandler = require('./baseWatchHandler.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 
 module.exports = {
@@ -61,6 +62,8 @@ module.exports = {
                             guildId, serverId, entityId);
                     }
 
+                    const prevItems = rustplus.storageMonitors.hasOwnProperty(entityId) ?
+                        rustplus.storageMonitors[entityId].items : null;
                     rustplus.storageMonitors[entityId] = {
                         items: info.entityInfo.payload.items,
                         expiry: info.entityInfo.payload.protectionExpiry,
@@ -98,6 +101,9 @@ module.exports = {
                         }
                         client.setInstance(guildId, instance);
                     }
+
+                    await BaseWatchHandler.onStorageUpdate(client, rustplus, entityId, prevItems,
+                        info.entityInfo.payload);
                 }
 
                 await DiscordMessages.sendStorageMonitorMessage(guildId, serverId, entityId);
