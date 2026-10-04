@@ -108,9 +108,8 @@ module.exports = {
         rustplus.isNewConnection = false;
         rustplus.loadMarkers();
 
-        /* Trackers that follow the active server move to it; after a wipe, offer to clean old devices */
+        /* After a wipe, offer to remove the devices of the previous wipe */
         try {
-            await ServerLifecycle.followActiveServer(client, guildId);
             if (wipeDetected) await ServerLifecycle.sendWipeCleanupOffer(client, guildId, serverId);
         }
         catch (e) {

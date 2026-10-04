@@ -1126,26 +1126,6 @@ module.exports = async (client, interaction) => {
 
         await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
     }
-    else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerFollowServer')) {
-        const ids = JSON.parse(interaction.customId.replace('TrackerFollowServer', ''));
-        const tracker = instance.trackers[ids.trackerId];
-
-        if (!tracker) {
-            await interaction.message.delete();
-            return;
-        }
-
-        tracker.followServer = tracker.followServer === false;
-        client.setInstance(guildId, instance);
-
-        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
-            id: `${verifyId}`,
-            value: `${tracker.followServer}`
-        }));
-
-        await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
-        if (tracker.followServer) await require('../util/serverLifecycle.js').followActiveServer(client, guildId);
-    }
     else if (interaction.customId.startsWith('WipeCleanup')) {
         const ids = JSON.parse(interaction.customId.replace('WipeCleanup', ''));
 

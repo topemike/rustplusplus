@@ -470,11 +470,6 @@ module.exports = {
                     style: tracker.clanAlerts !== false ? SUCCESS : DANGER
                 }),
                 module.exports.getButton({
-                    customId: `TrackerFollowServer${identifier}`,
-                    label: Client.client.intlGet(guildId, 'trackerFollowServerCap'),
-                    style: tracker.followServer !== false ? SUCCESS : DANGER
-                }),
-                module.exports.getButton({
                     customId: `TrackerSchedule${identifier}`,
                     label: Client.client.intlGet(guildId, 'trackerScheduleCap'),
                     style: PRIMARY,

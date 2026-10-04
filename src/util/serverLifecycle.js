@@ -19,11 +19,8 @@
 */
 
 /*
- *  Moving between servers and wipes:
- *  - Trackers with "follow server" on (default) move to the server the bot connects to,
- *    so the tracked players are followed on the new server (BattleMetrics player ids are global).
- *  - After a wipe, offer a button to remove the Smart Devices of the previous wipe that no longer
- *    respond (switches, alarms, storage monitors), keeping switch groups so they can be refilled.
+ *  Wipes: offer a button to remove the Smart Devices of the previous wipe that no longer
+ *  respond (switches, alarms, storage monitors), keeping switch groups so they can be refilled.
  */
 
 const Discord = require('discord.js');
@@ -32,54 +29,6 @@ const Constants = require('./constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
-
-/**
- *  Moves the trackers that follow the active server to it.
- *  @return {Array} Names of the trackers that were moved.
- */
-async function followActiveServer(client, guildId) {
-    const instance = client.getInstance(guildId);
-    const serverId = instance.activeServer;
-    if (serverId === null || !instance.serverList[serverId]) return [];
-
-    const server = instance.serverList[serverId];
-    if (!server.battlemetricsId) return [];
-
-    const moved = [];
-    for (const [trackerId, tracker] of Object.entries(instance.trackers)) {
-        if (tracker.followServer === false) continue;
-        if (tracker.serverId === serverId && tracker.battlemetricsId === server.battlemetricsId) continue;
-
-        tracker.serverId = serverId;
-        tracker.battlemetricsId = server.battlemetricsId;
-        tracker.title = server.title;
-        tracker.img = server.img;
-        moved.push({ trackerId: trackerId, name: tracker.name });
-    }
-
-    if (moved.length === 0) return [];
-    client.setInstance(guildId, instance);
-
-    for (const t of moved) {
-        try {
-            await DiscordMessages.sendTrackerMessage(guildId, t.trackerId);
-        }
-        catch (e) {
-            /* The tracker message is refreshed again on the next BattleMetrics update */
-        }
-    }
-
-    await DiscordMessages.sendMessage(guildId, {
-        embeds: [DiscordEmbeds.getEmbed({
-            color: Constants.COLOR_DEFAULT,
-            title: client.intlGet(guildId, 'trackersMovedTitle', { server: server.title }),
-            description: client.intlGet(guildId, 'trackersMovedDesc', { trackers: moved.map(t => t.name).join(', ') }),
-            timestamp: true
-        })]
-    }, null, instance.channelId.activity);
-
-    return moved.map(t => t.name);
-}
 
 function countUnreachable(server) {
     const count = (list) => Object.values(list || {}).filter(e => e.reachable === false).length;
@@ -169,7 +118,6 @@ async function cleanupUnreachableDevices(client, guildId, serverId) {
 }
 
 module.exports = {
-    followActiveServer: followActiveServer,
     sendWipeCleanupOffer: sendWipeCleanupOffer,
     cleanupUnreachableDevices: cleanupUnreachableDevices,
     countUnreachable: countUnreachable
