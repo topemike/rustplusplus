@@ -21,6 +21,8 @@
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools');
 
+const MarketHandler = require('./marketHandler.js');
+
 module.exports = {
     discordCommandHandler: async function (rustplus, client, message) {
         const guildId = rustplus.guildId;
@@ -105,6 +107,9 @@ module.exports = {
             (commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarker')} `) ||
                 commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxMarkers')}`)) {
             response = client.intlGet(rustplus.guildId, 'commandNotPossibleDiscord');
+        }
+        else if (MarketHandler.getCommandFind(rustplus, client, command, true) !== null) {
+            response = MarketHandler.getCommandFind(rustplus, client, command, true);
         }
         else if (commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxMarket')} `) ||
             commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarket')} `)) {
