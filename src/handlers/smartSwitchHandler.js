@@ -68,6 +68,8 @@ module.exports = {
         /* Go through all Smart Switches and see if the auto day/night setting is on and if it just became day/night */
         if (rustplus.time.isTurnedDay(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
+                /* Held on by an alarm action: automatic modes must not change it */
+                if (content.holdUntil && Date.now() < content.holdUntil) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = true;
                     client.setInstance(guildId, instance);
@@ -118,6 +120,8 @@ module.exports = {
         }
         else if (rustplus.time.isTurnedNight(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
+                /* Held on by an alarm action: automatic modes must not change it */
+                if (content.holdUntil && Date.now() < content.holdUntil) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = false;
                     client.setInstance(guildId, instance);
@@ -168,6 +172,8 @@ module.exports = {
         }
 
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
+            /* Held on by an alarm action: automatic modes must not change it */
+            if (content.holdUntil && Date.now() < content.holdUntil) continue;
             if (content.autoDayNightOnOff === 3) { /* AUTO-ON */
                 if (content.active) continue;
 

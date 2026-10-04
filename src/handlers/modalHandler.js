@@ -21,8 +21,10 @@
 const Discord = require('discord.js');
 
 const Battlemetrics = require('../structures/Battlemetrics');
+const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const RaidTargets = require('../util/raidTargets.js');
 const Keywords = require('../util/keywords.js');
 const Scrape = require('../util/scrape.js');
 
@@ -230,6 +232,24 @@ module.exports = async (client, interaction) => {
 
         server.alarms[ids.entityId].name = smartAlarmName;
         server.alarms[ids.entityId].message = smartAlarmMessage;
+
+        const actionsText = interaction.fields.getTextInputValue('SmartAlarmActions');
+        const holdMinutes = parseInt(interaction.fields.getTextInputValue('SmartAlarmHoldMinutes'));
+        const targets = RaidTargets.resolveActionTargets(server, actionsText);
+        if (targets.groups.length === 0 && targets.switches.length === 0) {
+            delete server.alarms[ids.entityId].actions;
+        }
+        else {
+            server.alarms[ids.entityId].actions = {
+                groups: targets.groups,
+                switches: targets.switches,
+                holdMinutes: holdMinutes > 0 ? holdMinutes : Config.raid.defaultHoldMinutes
+            };
+        }
+        if (targets.unknown.length > 0) {
+            client.log(client.intlGet(null, 'warningCap'),
+                `Alarm actions: unknown switches/groups: ${targets.unknown.join(', ')}`);
+        }
 
         if (smartAlarmCommand !== server.alarms[ids.entityId].command &&
             !Keywords.getListOfUsedKeywords(client, guildId, ids.serverId).includes(smartAlarmCommand)) {

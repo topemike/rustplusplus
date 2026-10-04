@@ -774,6 +774,28 @@ module.exports = async (client, interaction) => {
 
         await DiscordMessages.sendSmartAlarmMessage(guildId, ids.serverId, ids.entityId, interaction);
     }
+    else if (interaction.customId.startsWith('SmartAlarmRaidMode')) {
+        const ids = JSON.parse(interaction.customId.replace('SmartAlarmRaidMode', ''));
+        const server = instance.serverList[ids.serverId];
+
+        if (!server || (server && !server.alarms.hasOwnProperty(ids.entityId))) {
+            await interaction.message.delete();
+            return;
+        }
+
+        server.alarms[ids.entityId].raidMode = server.alarms[ids.entityId].raidMode === false;
+        client.setInstance(guildId, instance);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `${server.alarms[ids.entityId].raidMode}`
+        }));
+
+        await DiscordMessages.sendSmartAlarmMessage(guildId, ids.serverId, ids.entityId, interaction);
+    }
+    else if (interaction.customId === 'RaidAcknowledge') {
+        await require('./raidHandler.js').acknowledge(client, interaction);
+    }
     else if (interaction.customId.startsWith('SmartAlarmDelete')) {
         const ids = JSON.parse(interaction.customId.replace('SmartAlarmDelete', ''));
         const server = instance.serverList[ids.serverId];

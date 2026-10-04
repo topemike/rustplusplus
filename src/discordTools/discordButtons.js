@@ -226,6 +226,11 @@ module.exports = {
                 style: entity.everyone ? SUCCESS : DANGER
             }),
             module.exports.getButton({
+                customId: `SmartAlarmRaidMode${identifier}`,
+                label: Client.client.intlGet(guildId, 'raidModeCap'),
+                style: entity.raidMode !== false ? SUCCESS : DANGER
+            }),
+            module.exports.getButton({
                 customId: `SmartAlarmEdit${identifier}`,
                 label: Client.client.intlGet(guildId, 'editCap'),
                 style: PRIMARY

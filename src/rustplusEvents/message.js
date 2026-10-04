@@ -22,6 +22,7 @@ const CommandHandler = require('../handlers/inGameCommandHandler.js');
 const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const InGameChatHandler = require('../handlers/inGameChatHandler.js');
+const RaidHandler = require('../handlers/raidHandler.js');
 const SmartSwitchGroupHandler = require('../handlers/smartSwitchGroupHandler.js');
 const TeamChatHandler = require("../handlers/teamChatHandler.js");
 const TeamHandler = require('../handlers/teamHandler.js');
@@ -184,10 +185,17 @@ async function messageBroadcastEntityChangedSmartAlarm(rustplus, client, message
     if (active) {
         server.alarms[entityId].lastTrigger = Math.floor(new Date() / 1000);
         client.setInstance(rustplus.guildId, instance);
-        await DiscordMessages.sendSmartAlarmTriggerMessage(rustplus.guildId, serverId, entityId);
 
-        if (instance.generalSettings.smartAlarmNotifyInGame) {
-            rustplus.sendInGameMessage(`${server.alarms[entityId].name}: ${server.alarms[entityId].message}`);
+        if (server.alarms[entityId].raidMode !== false) {
+            /* Grouped raid notification: one message, updated, with reminders */
+            await RaidHandler.onAlarmTriggered(client, rustplus, rustplus.guildId, serverId, entityId);
+        }
+        else {
+            await DiscordMessages.sendSmartAlarmTriggerMessage(rustplus.guildId, serverId, entityId);
+
+            if (instance.generalSettings.smartAlarmNotifyInGame) {
+                rustplus.sendInGameMessage(`${server.alarms[entityId].name}: ${server.alarms[entityId].message}`);
+            }
         }
     }
 
