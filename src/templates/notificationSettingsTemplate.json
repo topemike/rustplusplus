@@ -71,6 +71,12 @@
         "inGame": false,
         "voice": false
     },
+    "deepSeaSetting": {
+        "image": "cargoship_logo.png",
+        "discord": true,
+        "inGame": true,
+        "voice": true
+    },
     "heavyScientistCalledSetting": {
         "image": "oil_rig_logo.png",
         "discord": true,

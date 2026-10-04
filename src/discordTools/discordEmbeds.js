@@ -789,6 +789,10 @@ module.exports = {
         const travelingVendorMessage = rustplus.getCommandTravelingVendor(true);
         const bradleyMessage = rustplus.getCommandBradley(true);
         const crateMessage = rustplus.getCommandCrate(true);
+        const deepSeaServer = instance.serverList[rustplus.serverId];
+        const deepSeaMessage = deepSeaServer && deepSeaServer.deepSea ?
+            require('../handlers/deepSeaHandler.js').statusText(Client.client, guildId, deepSeaServer.deepSea,
+                Date.now(), true) : Client.client.intlGet(guildId, 'deepSeaNotSyncedShort');
 
         return module.exports.getEmbed({
             title: Client.client.intlGet(guildId, 'eventInfo'),
@@ -804,7 +808,8 @@ module.exports = {
                 { name: chinook47FieldName, value: `\`${ch47Message}\``, inline: true },
                 { name: travelingVendorFieldName, value: `\`${travelingVendorMessage}\``, inline: true },
                 { name: Client.client.intlGet(guildId, 'bradleyApc'), value: `\`${bradleyMessage}\``, inline: true },
-                { name: Client.client.intlGet(guildId, 'lockedCrates'), value: `\`${crateMessage}\``, inline: true }],
+                { name: Client.client.intlGet(guildId, 'lockedCrates'), value: `\`${crateMessage}\``, inline: true },
+                { name: 'Deep Sea', value: `\`${deepSeaMessage}\``, inline: true }],
             timestamp: true
         });
     },

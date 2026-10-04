@@ -110,7 +110,15 @@ module.exports = {
 
         /* After a wipe, offer to remove the devices of the previous wipe */
         try {
-            if (wipeDetected) await ServerLifecycle.sendWipeCleanupOffer(client, guildId, serverId);
+            if (wipeDetected) {
+                await ServerLifecycle.sendWipeCleanupOffer(client, guildId, serverId);
+                /* The Deep Sea cycle starts again after a wipe */
+                const wipedInstance = client.getInstance(guildId);
+                if (wipedInstance.serverList[serverId] && wipedInstance.serverList[serverId].deepSea) {
+                    delete wipedInstance.serverList[serverId].deepSea;
+                    client.setInstance(guildId, wipedInstance);
+                }
+            }
         }
         catch (e) {
             client.log(client.intlGet(null, 'errorCap'), `Server lifecycle: ${e}`, 'error');

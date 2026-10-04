@@ -22,6 +22,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools');
 
 const MarketHandler = require('./marketHandler.js');
+const DeepSeaHandler = require('./deepSeaHandler.js');
 
 module.exports = {
     discordCommandHandler: async function (rustplus, client, message) {
@@ -107,6 +108,9 @@ module.exports = {
             (commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarker')} `) ||
                 commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxMarkers')}`)) {
             response = client.intlGet(rustplus.guildId, 'commandNotPossibleDiscord');
+        }
+        else if (DeepSeaHandler.command(rustplus, client, command) !== null) {
+            response = DeepSeaHandler.command(rustplus, client, command);
         }
         else if (MarketHandler.getCommandFind(rustplus, client, command, true) !== null) {
             response = MarketHandler.getCommandFind(rustplus, client, command, true);
