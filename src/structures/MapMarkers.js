@@ -20,6 +20,7 @@
 
 const Constants = require('../util/constants.js');
 const Map = require('../util/map.js');
+const ExtraEvents = require('./ExtraEvents.js');
 const Timer = require('../util/timer');
 
 class MapMarkers {
@@ -48,6 +49,8 @@ class MapMarkers {
         this._genericRadiuses = [];
         this._patrolHelicopters = [];
         this._travelingVendors = [];
+
+        this.extraEvents = new ExtraEvents(this);
 
         /* Timers */
         this.cargoShipEgressTimers = new Object();
@@ -264,6 +267,13 @@ class MapMarkers {
         this.updateVendingMachines(mapMarkers);
         this.updateGenericRadiuses(mapMarkers);
         this.updateTravelingVendors(mapMarkers);
+
+        try {
+            this.extraEvents.update(mapMarkers);
+        }
+        catch (e) {
+            this.client.log(this.client.intlGet(null, 'errorCap'), `Extra events failed: ${e}`, 'error');
+        }
     }
 
     updatePlayers(mapMarkers) {
@@ -895,6 +905,8 @@ class MapMarkers {
 
         this.crateSmallOilRigLocation = null;
         this.crateLargeOilRigLocation = null;
+
+        if (this.extraEvents) this.extraEvents.reset();
     }
 }
 

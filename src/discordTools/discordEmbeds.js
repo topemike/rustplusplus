@@ -775,6 +775,8 @@ module.exports = {
         const largeOilMessage = rustplus.getCommandLarge(true);
         const ch47Message = rustplus.getCommandChinook(true);
         const travelingVendorMessage = rustplus.getCommandTravelingVendor(true);
+        const bradleyMessage = rustplus.getCommandBradley(true);
+        const crateMessage = rustplus.getCommandCrate(true);
 
         return module.exports.getEmbed({
             title: Client.client.intlGet(guildId, 'eventInfo'),
@@ -788,7 +790,9 @@ module.exports = {
                 { name: smallOilRigFieldName, value: `\`${smallOilMessage}\``, inline: true },
                 { name: largeOilRigFieldName, value: `\`${largeOilMessage}\``, inline: true },
                 { name: chinook47FieldName, value: `\`${ch47Message}\``, inline: true },
-                { name: travelingVendorFieldName, value: `\`${travelingVendorMessage}\``, inline: true }],
+                { name: travelingVendorFieldName, value: `\`${travelingVendorMessage}\``, inline: true },
+                { name: Client.client.intlGet(guildId, 'bradleyApc'), value: `\`${bradleyMessage}\``, inline: true },
+                { name: Client.client.intlGet(guildId, 'lockedCrates'), value: `\`${crateMessage}\``, inline: true }],
             timestamp: true
         });
     },
