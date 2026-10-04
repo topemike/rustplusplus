@@ -26,6 +26,7 @@ const CredentialUtils = require('../util/credentialUtils.js');
 const DiscordTools = require('./discordTools.js');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Timer = require('../util/timer');
+const TrackerIntel = require('../util/trackerIntel.js');
 const Config = require('../../config');
 
 function isValidUrl(url) {
@@ -989,6 +990,71 @@ module.exports = {
             color: Constants.COLOR_DEFAULT,
             description: `**${string}**`,
             footer: { text: `${instance.serverList[rustplus.serverId].title}` }
+        });
+    },
+
+    getTrackerScheduleEmbed: function (guildId, trackerId, now = Date.now()) {
+        const instance = Client.client.getInstance(guildId);
+        const tracker = instance.trackers[trackerId];
+        const schedule = TrackerIntel.getSchedule(guildId, trackerId, now);
+        const title = Client.client.intlGet(guildId, 'trackerScheduleTitle', { tracker: tracker.name });
+
+        if (schedule === null) {
+            return module.exports.getEmbed({
+                color: Constants.COLOR_DEFAULT,
+                title: title,
+                description: Client.client.intlGet(guildId, 'trackerScheduleNoData')
+            });
+        }
+
+        const pad = (n) => String(n).padStart(2, '0');
+        let chart = '';
+        for (let hour = 0; hour < 24; hour++) {
+            const h = schedule.hours[hour];
+            if (h.anyOnline === null) {
+                chart += `${pad(hour)}h ${'·'.repeat(10)}    -\n`;
+                continue;
+            }
+            const filled = Math.round(h.anyOnline * 10);
+            const percent = `${Math.round(h.anyOnline * 100)}%`.padStart(4, ' ');
+            chart += `${pad(hour)}h ${'█'.repeat(filled)}${'░'.repeat(10 - filled)} ${percent}  ` +
+                `${h.avgOnline.toFixed(1)}\n`;
+        }
+
+        let description = Client.client.intlGet(guildId, 'trackerScheduleDescription', {
+            days: schedule.days,
+            timezone: schedule.timeZone
+        });
+        description += `\n\`\`\`\n${chart}\`\`\``;
+
+        let windows = schedule.windows.map(w =>
+            `**${pad(w.start)}:00 – ${pad(w.end)}:00** · ${Math.round(w.anyOnline * 100)}%`).join('\n');
+        if (windows === '') windows = Client.client.intlGet(guildId, 'empty');
+
+        const formatMs = (ms) => {
+            const minutes = Math.floor(ms / 60000);
+            return `${Math.floor(minutes / 60)}h ${pad(minutes % 60)}m`;
+        };
+        let players = '';
+        for (const p of schedule.players) {
+            const status = p.online ? Constants.ONLINE_EMOJI : Constants.OFFLINE_EMOJI;
+            const seen = p.online || p.lastSeen === null ? '' :
+                ` · ${Client.client.intlGet(guildId, 'trackerScheduleLastSeen')} <t:${Math.floor(p.lastSeen / 1000)}:R>`;
+            const line = `${status} ${p.name} · ${formatMs(p.onlineMs7d)}${seen}\n`;
+            if (players.length + line.length > 1000) break;
+            players += line;
+        }
+        if (players === '') players = Client.client.intlGet(guildId, 'empty');
+
+        return module.exports.getEmbed({
+            color: Constants.COLOR_DEFAULT,
+            title: title,
+            description: description,
+            footer: { text: tracker.title },
+            fields: [
+                { name: Client.client.intlGet(guildId, 'trackerScheduleBestWindows'), value: windows },
+                { name: Client.client.intlGet(guildId, 'trackerSchedulePlayers'), value: players }
+            ]
         });
     },
 

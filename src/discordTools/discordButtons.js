@@ -450,6 +450,18 @@ module.exports = {
                     customId: `TrackerUpdate${identifier}`,
                     label: Client.client.intlGet(guildId, 'updateCap'),
                     style: PRIMARY
+                })),
+            new Discord.ActionRowBuilder().addComponents(
+                module.exports.getButton({
+                    customId: `TrackerClanAlerts${identifier}`,
+                    label: Client.client.intlGet(guildId, 'trackerClanAlertsCap'),
+                    style: tracker.clanAlerts !== false ? SUCCESS : DANGER
+                }),
+                module.exports.getButton({
+                    customId: `TrackerSchedule${identifier}`,
+                    label: Client.client.intlGet(guildId, 'trackerScheduleCap'),
+                    style: PRIMARY,
+                    emoji: '\u{1F4C5}'
                 }))
         ];
     },
