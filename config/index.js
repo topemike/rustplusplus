@@ -33,5 +33,17 @@ module.exports = {
     },
     battlemetrics: {
         token: process.env.RPP_BATTLEMETRICS_TOKEN || ''
+    },
+    healthMonitor: {
+        /* Warn in Discord this many hours before FCM credentials expire */
+        credentialsWarnHoursBefore: parseInt(process.env.RPP_CREDENTIALS_WARN_HOURS) || 48,
+        /* Warn in Discord if the Rust+ connection is down for this many minutes */
+        disconnectAlertMinutes: parseInt(process.env.RPP_DISCONNECT_ALERT_MINUTES) || 10
+    },
+    backup: {
+        /* Daily backup of instances/ and credentials/ */
+        enabled: process.env.RPP_BACKUP_ENABLED !== 'false',
+        directory: process.env.RPP_BACKUP_DIR || 'logs/backups',
+        keepDays: parseInt(process.env.RPP_BACKUP_KEEP_DAYS) || 14
     }
 };

@@ -80,5 +80,8 @@ module.exports = {
         }
 
         client.createRustplusInstancesFromConfig();
+
+        require('../util/healthMonitor.js').start(client);
+        require('../util/backup.js').start(client);
     },
 };

@@ -22,6 +22,7 @@ const Discord = require('discord.js');
 
 const Client = require('../../index.ts');
 const Constants = require('../util/constants.js');
+const CredentialUtils = require('../util/credentialUtils.js');
 const DiscordTools = require('./discordTools.js');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Timer = require('../util/timer');
@@ -996,19 +997,30 @@ module.exports = {
         let names = '';
         let steamIds = '';
         let hoster = '';
+        let expires = '';
 
         for (const credential in credentials) {
             if (credential === 'hoster') continue;
 
             const user = await DiscordTools.getUserById(guildId, credentials[credential].discord_user_id);
-            names += `${user.user.username}\n`;
+            names += `${user ? user.user.username : credentials[credential].discord_user_id}\n`;
             steamIds += `${credential}\n`;
             hoster += `${credential === credentials.hoster ? `${Constants.LEADER_EMOJI}\n` : '\u200B\n'}`;
+
+            const expire = CredentialUtils.toEpochSeconds(credentials[credential].expire_date);
+            if (expire === null) {
+                expires += '-\n';
+            }
+            else {
+                const expired = expire <= Math.floor(Date.now() / 1000);
+                expires += `${expired ? '\u274C ' : ''}<t:${expire}:R>\n`;
+            }
         }
 
         if (names === '') names = Client.client.intlGet(guildId, 'empty');
         if (steamIds === '') steamIds = Client.client.intlGet(guildId, 'empty');
         if (hoster === '') hoster = Client.client.intlGet(guildId, 'empty');
+        if (expires === '') expires = Client.client.intlGet(guildId, 'empty');
 
         return module.exports.getEmbed({
             color: Constants.COLOR_DEFAULT,
@@ -1016,7 +1028,8 @@ module.exports = {
             fields: [
                 { name: Client.client.intlGet(guildId, 'name'), value: names, inline: true },
                 { name: 'SteamID', value: steamIds, inline: true },
-                { name: Client.client.intlGet(guildId, 'hoster'), value: hoster, inline: true }]
+                { name: Client.client.intlGet(guildId, 'hoster'), value: hoster, inline: true },
+                { name: Client.client.intlGet(guildId, 'healthCredentialsExpires'), value: expires, inline: true }]
         });
     },
 
