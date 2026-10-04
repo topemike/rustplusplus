@@ -22,6 +22,8 @@ const SmartAlarmHandler = require('./smartAlarmHandler.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const SmartSwitchHandler = require('./smartSwitchHandler.js');
 
+const MarketHandler = require('./marketHandler.js');
+
 module.exports = {
     inGameCommandHandler: async function (rustplus, client, message) {
         const guildId = rustplus.guildId;
@@ -112,6 +114,9 @@ module.exports = {
             (commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarker')} `) ||
                 commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxMarkers')}`)) {
             rustplus.sendInGameMessage(await rustplus.getCommandMarker(command, callerSteamId));
+        }
+        else if (MarketHandler.getCommandFind(rustplus, client, command) !== null) {
+            rustplus.sendInGameMessage(MarketHandler.getCommandFind(rustplus, client, command));
         }
         else if (commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxMarket')} `) ||
             commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarket')} `)) {

@@ -27,6 +27,7 @@ const StorageMonitorHandler = require('../handlers/storageMonitorHandler.js');
 const Team = require('../structures/Team');
 const TeamHandler = require('../handlers/teamHandler.js');
 const Time = require('../structures/Time');
+const MarketHandler = require('../handlers/marketHandler.js');
 const TimeHandler = require('../handlers/timeHandler.js');
 const VendingMachines = require('../handlers/vendingMachineHandler.js');
 
@@ -64,6 +65,12 @@ module.exports = {
         rustplus.time.updateTime(time.time);
         rustplus.info.updateInfo(info.info);
         rustplus.mapMarkers.updateMapMarkers(mapMarkers.mapMarkers);
+        try {
+            await MarketHandler.handler(rustplus, client);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Market handler: ${e}`, 'error');
+        }
 
         await InformationHandler.handler(rustplus);
         await StorageMonitorHandler.handler(rustplus, client);

@@ -23,6 +23,7 @@ const Discord = require('discord.js');
 const Battlemetrics = require('../structures/Battlemetrics');
 const Config = require('../../config');
 const Constants = require('../util/constants.js');
+const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const RaidTargets = require('../util/raidTargets.js');
 const Keywords = require('../util/keywords.js');
@@ -217,6 +218,33 @@ module.exports = async (client, interaction) => {
         }));
 
         await DiscordMessages.sendSmartSwitchGroupMessage(interaction.guildId, ids.serverId, ids.groupId);
+    }
+    else if (interaction.customId === 'MarketBoardAdd') {
+        const MarketHandler = require('./marketHandler.js');
+        const text = interaction.fields.getTextInputValue('MarketBoardItems');
+        MarketHandler.ensureBoard(instance, client.items);
+        const result = MarketHandler.addToBoard(instance, client.items, text);
+        client.setInstance(guildId, instance);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'modalValueChange', {
+            id: `${verifyId}`,
+            value: `market board add: ${JSON.stringify(result)}`
+        }));
+
+        const lines = [];
+        if (result.added.length > 0) lines.push(client.intlGet(guildId, 'marketBoardAdded', { items: result.added.join(', ') }));
+        if (result.duplicated.length > 0) {
+            lines.push(client.intlGet(guildId, 'marketBoardDuplicated', { items: result.duplicated.join(', ') }));
+        }
+        if (result.unknown.length > 0) lines.push(client.intlGet(guildId, 'marketBoardUnknown', { items: result.unknown.join(', ') }));
+        await client.interactionReply(interaction, {
+            embeds: [DiscordEmbeds.getEmbed({ color: Constants.COLOR_DEFAULT, description: lines.join('\n') || '-' })],
+            ephemeral: true
+        });
+
+        const rustplus = client.rustplusInstances[guildId];
+        if (rustplus && rustplus.isOperational) await MarketHandler.updateBoard(client, rustplus);
+        return;
     }
     else if (interaction.customId.startsWith('SmartAlarmEdit')) {
         const ids = JSON.parse(interaction.customId.replace('SmartAlarmEdit', ''));
