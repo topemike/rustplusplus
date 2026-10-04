@@ -22,6 +22,7 @@ const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
 const Scrape = require('../util/scrape.js');
+const TrackerIntel = require('../util/trackerIntel.js');
 
 module.exports = {
     handler: async function (client, firstTime = false) {
@@ -167,9 +168,19 @@ module.exports = {
                     }
                 }
 
+                await module.exports.handleTrackerIntel(client, guildId, trackerId, content, bmInstance, rustplus);
+
                 client.setInstance(guildId, instance);
 
                 await DiscordMessages.sendTrackerMessage(guildId, trackerId);
+            }
+
+            TrackerIntel.cleanup(guildId, Object.keys(instance.trackers));
+            try {
+                TrackerIntel.save(guildId);
+            }
+            catch (e) {
+                client.log(client.intlGet(null, 'errorCap'), `Tracker history save failed: ${e}`, 'error');
             }
         }
 
@@ -178,6 +189,45 @@ module.exports = {
         }
         else {
             client.battlemetricsIntervalCounter += 1;
+        }
+    },
+
+    handleTrackerIntel: async function (client, guildId, trackerId, tracker, bmInstance, rustplus) {
+        let alerts = [];
+        try {
+            alerts = TrackerIntel.update(guildId, trackerId, tracker, bmInstance);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Tracker intel failed: ${e}`, 'error');
+            return;
+        }
+
+        for (const alert of alerts) {
+            let str = null, color = null;
+            if (alert.type === 'allOffline') {
+                str = client.intlGet(guildId, alert.lastName ? 'trackerAllOffline' : 'trackerAllOfflineNoName', {
+                    tracker: tracker.name,
+                    count: alert.count,
+                    name: alert.lastName
+                });
+                color = Constants.COLOR_INACTIVE;
+            }
+            else if (alert.type === 'groupLogin') {
+                str = client.intlGet(guildId, 'trackerGroupLogin', {
+                    tracker: tracker.name,
+                    count: alert.count,
+                    minutes: alert.minutes,
+                    names: alert.names.join(', ')
+                });
+                color = Constants.COLOR_ACTIVE;
+            }
+            if (str === null) continue;
+
+            await DiscordMessages.sendActivityNotificationMessage(
+                guildId, tracker.serverId, color, str, null, tracker.title, tracker.everyone);
+            if (rustplus && (rustplus.serverId === tracker.serverId) && tracker.inGame) {
+                rustplus.sendInGameMessage(str);
+            }
         }
     },
 

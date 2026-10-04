@@ -24,6 +24,8 @@ module.exports = {
         pollingIntervalMs: process.env.RPP_POLLING_INTERVAL || 10000,
         showCallStackError: process.env.RPP_LOG_CALL_STACK || false,
         reconnectIntervalMs: process.env.RPP_RECONNECT_INTERVAL || 15000,
+        /* Time zone used for tracker schedules (IANA name, e.g. Europe/Madrid) */
+        timezone: process.env.RPP_TIMEZONE || 'Europe/Madrid',
     },
     discord: {
         username: process.env.RPP_DISCORD_USERNAME || 'rustplusplus',
@@ -39,6 +41,18 @@ module.exports = {
         credentialsWarnHoursBefore: parseInt(process.env.RPP_CREDENTIALS_WARN_HOURS) || 48,
         /* Warn in Discord if the Rust+ connection is down for this many minutes */
         disconnectAlertMinutes: parseInt(process.env.RPP_DISCONNECT_ALERT_MINUTES) || 10
+    },
+    trackerIntel: {
+        /* Days of login/logout history kept per tracked player */
+        historyDays: parseInt(process.env.RPP_TRACKER_HISTORY_DAYS) || 30,
+        /* Days used to calculate the online schedule of a tracker */
+        scheduleDays: parseInt(process.env.RPP_TRACKER_SCHEDULE_DAYS) || 14,
+        /* Minutes the whole clan must stay offline before the "all offline" alert */
+        allOfflineConfirmMinutes: parseInt(process.env.RPP_TRACKER_OFFLINE_CONFIRM_MINUTES) || 2,
+        /* "Clan logging in" alert: this many members connecting within the window */
+        groupLoginThreshold: parseInt(process.env.RPP_TRACKER_GROUP_LOGIN_THRESHOLD) || 2,
+        groupLoginWindowMinutes: parseInt(process.env.RPP_TRACKER_GROUP_LOGIN_WINDOW_MINUTES) || 10,
+        groupLoginCooldownMinutes: parseInt(process.env.RPP_TRACKER_GROUP_LOGIN_COOLDOWN_MINUTES) || 30
     },
     backup: {
         /* Daily backup of instances/ and credentials/ */

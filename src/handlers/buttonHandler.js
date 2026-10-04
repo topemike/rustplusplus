@@ -21,6 +21,7 @@
 const Discord = require('discord.js');
 
 const Config = require('../../config');
+const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
@@ -1063,6 +1064,39 @@ module.exports = async (client, interaction) => {
         }));
 
         await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
+    }
+    else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerClanAlerts')) {
+        const ids = JSON.parse(interaction.customId.replace('TrackerClanAlerts', ''));
+        const tracker = instance.trackers[ids.trackerId];
+
+        if (!tracker) {
+            await interaction.message.delete();
+            return;
+        }
+
+        tracker.clanAlerts = tracker.clanAlerts === false;
+        client.setInstance(guildId, instance);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `${tracker.clanAlerts}`
+        }));
+
+        await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
+    }
+    else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerSchedule')) {
+        const ids = JSON.parse(interaction.customId.replace('TrackerSchedule', ''));
+        const tracker = instance.trackers[ids.trackerId];
+
+        if (!tracker) {
+            await interaction.message.delete();
+            return;
+        }
+
+        await client.interactionReply(interaction, {
+            embeds: [DiscordEmbeds.getTrackerScheduleEmbed(guildId, ids.trackerId)],
+            ephemeral: true
+        });
     }
     else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerUpdate')) {
         const ids = JSON.parse(interaction.customId.replace('TrackerUpdate', ''));
