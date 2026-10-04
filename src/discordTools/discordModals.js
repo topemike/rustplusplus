@@ -21,6 +21,7 @@
 const Discord = require('discord.js');
 
 const Client = require('../../index.ts');
+const Constants = require('../util/constants.js');
 const TextInput = require('./discordTextInputs.js');
 
 module.exports = {
@@ -78,6 +79,12 @@ module.exports = {
                 customId: 'OilRigCrateUnlockTime',
                 label: Client.client.intlGet(guildId, 'customTimerEditCrateOilRigUnlockLabel'),
                 value: `${server.oilRigLockedCrateUnlockTimeMs / 1000}`,
+                style: Discord.TextInputStyle.Short
+            })),
+            new Discord.ActionRowBuilder().addComponents(TextInput.getTextInput({
+                customId: 'BradleyRespawnTime',
+                label: Client.client.intlGet(guildId, 'customTimerEditBradleyRespawnLabel'),
+                value: `${(server.bradleyRespawnTimeMs || Constants.DEFAULT_BRADLEY_RESPAWN_TIME_MS) / 1000}`,
                 style: Discord.TextInputStyle.Short
             }))
         );

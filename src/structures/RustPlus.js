@@ -1372,6 +1372,14 @@ class RustPlus extends RustPlusLib {
         return strings;
     }
 
+    getCommandBradley(isInfoChannel = false) {
+        return this.mapMarkers.extraEvents.getCommandBradley(isInfoChannel);
+    }
+
+    getCommandCrate(isInfoChannel = false) {
+        return this.mapMarkers.extraEvents.getCommandCrate(isInfoChannel);
+    }
+
     getCommandHeli(isInfoChannel = false) {
         const strings = [];
         for (const patrolHelicopter of this.mapMarkers.patrolHelicopters) {

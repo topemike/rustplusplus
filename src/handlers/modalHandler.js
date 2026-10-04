@@ -47,6 +47,7 @@ module.exports = async (client, interaction) => {
         const server = instance.serverList[ids.serverId];
         const cargoShipEgressTime = parseInt(interaction.fields.getTextInputValue('CargoShipEgressTime'));
         const oilRigCrateUnlockTime = parseInt(interaction.fields.getTextInputValue('OilRigCrateUnlockTime'));
+        const bradleyRespawnTime = parseInt(interaction.fields.getTextInputValue('BradleyRespawnTime'));
 
         if (!server) {
             interaction.deferUpdate();
@@ -59,11 +60,14 @@ module.exports = async (client, interaction) => {
         if (oilRigCrateUnlockTime && ((oilRigCrateUnlockTime * 1000) !== server.oilRigLockedCrateUnlockTimeMs)) {
             server.oilRigLockedCrateUnlockTimeMs = oilRigCrateUnlockTime * 1000;
         }
+        if (bradleyRespawnTime && bradleyRespawnTime > 0) {
+            server.bradleyRespawnTimeMs = bradleyRespawnTime * 1000;
+        }
         client.setInstance(guildId, instance);
 
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'modalValueChange', {
             id: `${verifyId}`,
-            value: `${server.cargoShipEgressTimeMs}, ${server.oilRigLockedCrateUnlockTimeMs}`
+            value: `${server.cargoShipEgressTimeMs}, ${server.oilRigLockedCrateUnlockTimeMs}, ${server.bradleyRespawnTimeMs}`
         }));
     }
     else if (interaction.customId.startsWith('ServerEdit')) {

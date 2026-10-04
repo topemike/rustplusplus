@@ -41,11 +41,35 @@
         "inGame": false,
         "voice": true
     },
+    "bradleyApcDestroyedSetting": {
+        "image": "bradley_apc_destroyed_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": true
+    },
+    "bradleyApcRespawnSetting": {
+        "image": "bradley_apc_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": false
+    },
     "lockedCrateOilRigUnlockedSetting": {
         "image": "locked_crate_logo.png",
         "discord": true,
         "inGame": false,
         "voice": true
+    },
+    "lockedCrateDroppedSetting": {
+        "image": "locked_crate_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": true
+    },
+    "lockedCrateGoneSetting": {
+        "image": "locked_crate_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": false
     },
     "heavyScientistCalledSetting": {
         "image": "oil_rig_logo.png",
@@ -72,7 +96,7 @@
         "voice": true
     },
     "travelingVendorLeftSetting": {
-        "image": "traveling_vendor_logo.png", 
+        "image": "traveling_vendor_logo.png",
         "discord": true,
         "inGame": false,
         "voice": true
