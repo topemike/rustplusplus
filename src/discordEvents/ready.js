@@ -86,5 +86,6 @@ module.exports = {
         require('../handlers/raidHandler.js').start(client);
         require('../handlers/deepSeaHandler.js').start(client);
         require('../handlers/dailySummaryHandler.js').start(client);
+        require('../web/server.js').start(client);
     },
 };

@@ -1,0 +1,29 @@
+# Web panel: use together with your compose file, for example:
+#   docker compose -f compose.prod.yml -f docker-compose.web.yml up -d --build
+#
+# Needs in .env: RPP_WEB_DOMAIN and RPP_WEB_CLIENT_SECRET (see docs/web_panel.md),
+# a DNS A record for the domain pointing to this server, and ports 80 and 443 open.
+services:
+  app:
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    container_name: rpp-web
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - RPP_WEB_DOMAIN=${RPP_WEB_DOMAIN}
+    volumes:
+      - ./web/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
