@@ -87,6 +87,16 @@ module.exports = {
         /* Local hour (RPP_TIMEZONE) when it is posted */
         hour: parseInt(process.env.RPP_DAILY_SUMMARY_HOUR) >= 0 ? parseInt(process.env.RPP_DAILY_SUMMARY_HOUR) : 10
     },
+    web: {
+        /* Private web panel: enabled when both the domain and the Discord client secret are set */
+        domain: (process.env.RPP_WEB_DOMAIN || '').trim(),
+        clientSecret: process.env.RPP_WEB_CLIENT_SECRET || '',
+        /* Optional: only members with this role (name or id) can open the panel */
+        role: (process.env.RPP_WEB_ROLE || '').trim(),
+        port: parseInt(process.env.RPP_WEB_PORT) || 8080,
+        /* Optional: fixed secret for session cookies (generated and stored if empty) */
+        sessionSecret: process.env.RPP_WEB_SESSION_SECRET || ''
+    },
     backup: {
         /* Daily backup of instances/ and credentials/ */
         enabled: process.env.RPP_BACKUP_ENABLED !== 'false',

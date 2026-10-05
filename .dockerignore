@@ -1,2 +1,8 @@
 docs/
 node_modules/
+# Secrets and data are passed at runtime (env_file and volumes); never bake them into the image
+.env
+credentials/
+instances/
+logs/
+maps/

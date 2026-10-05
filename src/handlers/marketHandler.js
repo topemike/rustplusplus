@@ -275,6 +275,7 @@ module.exports = {
     removeEntry: removeEntry,
     updateBoard: updateBoard,
     getEntryContent: getEntryContent,
+    getMark: getMark,
     DEFAULT_BOARD: DEFAULT_BOARD,
 
     /**

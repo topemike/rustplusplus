@@ -23,7 +23,7 @@
  *  (and on demand with /resumen).
  *  - Events (counted from the event notifications), raids, tracked clans, Tool Cupboard upkeep
  *    (credentials are covered by the health monitor).
- *  Records are kept per guild in instances/dailyStats/<guildId>.json (last 48 hours).
+ *  Records are kept per guild in instances/dailyStats/<guildId>.json (last 14 days).
  */
 
 const Fs = require('fs');
@@ -36,7 +36,8 @@ const Timer = require('./timer');
 const DIR = Path.join(__dirname, '..', '..', 'instances', 'dailyStats');
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-const KEEP_MS = 2 * DAY_MS;
+/* 14 days, so the web panel can show the history (the summary only uses the last 24h) */
+const KEEP_MS = 14 * DAY_MS;
 
 /* Event notification settings shown in the summary, in this order */
 const EVENT_GROUPS = [
@@ -232,6 +233,9 @@ function markSent(guildId, now = Date.now()) {
 
 module.exports = {
     recordEvent: recordEvent,
+    getEvents: (guildId) => load(guildId).events.slice(),
+    getRaids: (guildId) => load(guildId).raids.slice(),
+    EVENT_GROUPS: EVENT_GROUPS,
     recordRaid: recordRaid,
     buildSummary: buildSummary,
     isDue: isDue,

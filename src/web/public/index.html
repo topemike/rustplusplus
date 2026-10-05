@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Panel del team</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="raid"></div>
+<header class="top">
+    <div class="wrap">
+        <div class="server">
+            <h1 id="server-title">Cargando…</h1>
+            <p class="sub" id="server-sub"></p>
+        </div>
+        <div>
+            <div class="user" id="user"></div>
+        </div>
+        <div class="readouts" id="readouts"></div>
+        <nav class="tabs" role="tablist" aria-label="Secciones">
+            <button role="tab" data-tab="base" aria-selected="true">Base</button>
+            <button role="tab" data-tab="trackers" aria-selected="false">Trackers</button>
+            <button role="tab" data-tab="raids" aria-selected="false">Raids</button>
+            <button role="tab" data-tab="market" aria-selected="false">Mercado</button>
+            <button role="tab" data-tab="events" aria-selected="false">Eventos</button>
+        </nav>
+    </div>
+</header>
+<main class="wrap" id="view" tabindex="-1"></main>
+<div class="tooltip" id="tooltip" role="status" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

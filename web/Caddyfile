@@ -1,0 +1,6 @@
+# HTTPS for the web panel. Caddy gets and renews the certificate automatically.
+# The domain comes from RPP_WEB_DOMAIN in the .env file.
+{$RPP_WEB_DOMAIN} {
+    encode gzip
+    reverse_proxy app:8080
+}
