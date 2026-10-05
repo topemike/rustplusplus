@@ -28,6 +28,7 @@ const DiscordTools = require('../discordTools/discordTools.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const DiscordButtons = require('../discordTools/discordButtons.js');
 const DiscordModals = require('../discordTools/discordModals.js');
+const SwitchOverride = require('../util/switchOverride.js');
 
 module.exports = async (client, interaction) => {
     const instance = client.getInstance(interaction.guildId);
@@ -669,6 +670,7 @@ module.exports = async (client, interaction) => {
         const active = (interaction.customId.startsWith('SmartSwitchOn')) ? true : false;
         const prevActive = server.switches[ids.entityId].active;
         server.switches[ids.entityId].active = active;
+        SwitchOverride.setManual(server.switches[ids.entityId], active);
         client.setInstance(guildId, instance);
 
         rustplus.interactionSwitches.push(ids.entityId);

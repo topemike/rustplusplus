@@ -20,6 +20,7 @@
 
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const Timer = require('../util/timer');
+const SwitchOverride = require('../util/switchOverride.js');
 
 module.exports = {
     handler: async function (rustplus, client) {
@@ -76,6 +77,7 @@ module.exports = {
         for (const entityId of actionSwitches) {
             const prevActive = instance.serverList[serverId].switches[entityId].active;
             instance.serverList[serverId].switches[entityId].active = value;
+            SwitchOverride.setManual(instance.serverList[serverId].switches[entityId], value);
             client.setInstance(guildId, instance);
 
             rustplus.interactionSwitches.push(entityId);
