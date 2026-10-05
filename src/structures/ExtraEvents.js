@@ -25,6 +25,7 @@
  *  - Locked crates (Crate markers): where they appear (Chinook drop, Cargo Ship...)
  *    and when they disappear (looted or despawned).
  *  - Unknown marker types are logged once, to discover new content (e.g. Deep Sea).
+ *  - Patrol Helicopter / Cargo Ship near the team base (set in-game with !base).
  */
 
 const Constants = require('../util/constants.js');
@@ -53,6 +54,12 @@ const CARGO_SHIP_CRATE_DISTANCE = 150;
 const OIL_RIG_CRATE_DISTANCE = 150;
 /* A crate appearing while a Chinook is on the map (or just left) was dropped by it. */
 const CHINOOK_RECENT_MS = 3 * MINUTE_MS;
+/* Warn when the Patrol Helicopter / Cargo Ship comes this close to the base (in grids), and
+   again when it moves away past the leave distance (a margin, so it does not flap). */
+const NEAR_BASE_GRIDS = 3;
+const LEAVE_BASE_GRIDS = 3.5;
+const BASE_CLEAR_WORDS = ['clear', 'remove', 'delete', 'borrar', 'quitar'];
+const BASE_INFO_WORDS = ['info', 'status', 'estado', '?'];
 
 class ExtraEvents {
     constructor(mapMarkers) {
@@ -75,6 +82,7 @@ class ExtraEvents {
         this.lastChinookSeen = null;  /* time */
         this.seenExplosions = new Set();
         this.loggedUnknownTypes = new Set();
+        this.nearBase = {};           /* 'type:id' -> { near, lastGrids } */
     }
 
     getServer() {
@@ -117,6 +125,7 @@ class ExtraEvents {
         if (markers.some(m => m.type === TYPE_CH47)) this.lastChinookSeen = now;
         this.updateExplosions(markers, now);
         this.updateCrates(markers, now);
+        this.updateNearBase(markers);
     }
 
     logUnknownTypes(markers) {
@@ -270,6 +279,106 @@ class ExtraEvents {
     /* --------------------------------------------------------------------- */
     /* Commands                                                              */
     /* --------------------------------------------------------------------- */
+
+    getBase() {
+        const server = this.getServer();
+        return server && server.baseLocation ? server.baseLocation : null;
+    }
+
+    formatGrids(grids) {
+        const instance = this.client.getInstance(this.rustplus.guildId);
+        const language = instance.generalSettings && instance.generalSettings.language ?
+            instance.generalSettings.language : 'en';
+        try {
+            return grids.toLocaleString(language, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+        }
+        catch (e) {
+            return grids.toFixed(1);
+        }
+    }
+
+    updateNearBase(markers) {
+        const base = this.getBase();
+        if (!base) {
+            this.nearBase = {};
+            return;
+        }
+
+        const tracked = markers.filter(m => m.type === TYPE_PATROL_HELICOPTER || m.type === TYPE_CARGO_SHIP);
+        const keys = new Set(tracked.map(m => `${m.type}:${m.id}`));
+        for (const key of Object.keys(this.nearBase)) {
+            if (!keys.has(key)) delete this.nearBase[key];
+        }
+
+        for (const marker of tracked) {
+            const key = `${marker.type}:${marker.id}`;
+            const grids = Map.getDistance(marker.x, marker.y, base.x, base.y) / Map.gridDiameter;
+            const state = this.nearBase[key] || (this.nearBase[key] = { near: false, lastGrids: null });
+            const approaching = state.lastGrids !== null && grids < state.lastGrids;
+            const isHeli = marker.type === TYPE_PATROL_HELICOPTER;
+
+            if (!state.near && grids <= NEAR_BASE_GRIDS) {
+                state.near = true;
+                const phrase = (isHeli ? 'heliNearBase' : 'cargoNearBase') + (approaching ? 'Approaching' : '');
+                this.rustplus.sendEvent(
+                    isHeli ? this.rustplus.notificationSettings.heliNearBaseSetting :
+                        this.rustplus.notificationSettings.cargoNearBaseSetting,
+                    this.client.intlGet(this.rustplus.guildId, phrase, {
+                        distance: this.formatGrids(grids),
+                        location: this.getPos(marker).string
+                    }),
+                    isHeli ? 'heli' : 'cargo',
+                    isHeli ? Constants.COLOR_PATROL_HELICOPTER_NEAR_BASE : Constants.COLOR_CARGO_SHIP_NEAR_BASE);
+            }
+            else if (state.near && grids > LEAVE_BASE_GRIDS) {
+                state.near = false;
+                this.rustplus.sendEvent(
+                    isHeli ? this.rustplus.notificationSettings.heliNearBaseSetting :
+                        this.rustplus.notificationSettings.cargoNearBaseSetting,
+                    this.client.intlGet(this.rustplus.guildId, isHeli ? 'heliLeftBase' : 'cargoLeftBase', {
+                        location: this.getPos(marker).string
+                    }),
+                    isHeli ? 'heli' : 'cargo',
+                    isHeli ? Constants.COLOR_PATROL_HELICOPTER_LEFT_BASE : Constants.COLOR_CARGO_SHIP_LEFT_BASE);
+            }
+            state.lastGrids = grids;
+        }
+    }
+
+    /* !base: mark the base at the caller's position. !base info / !base clear */
+    getCommandBase(command, callerSteamId) {
+        const guildId = this.rustplus.guildId;
+        const arg = command.trim().split(/\s+/).slice(1).join(' ').toLowerCase();
+        const instance = this.client.getInstance(guildId);
+        const server = instance.serverList[this.rustplus.serverId];
+        if (!server) return this.client.intlGet(guildId, 'noData');
+
+        if (BASE_CLEAR_WORDS.includes(arg)) {
+            delete server.baseLocation;
+            this.client.setInstance(guildId, instance);
+            this.nearBase = {};
+            return this.client.intlGet(guildId, 'baseCleared');
+        }
+        if (BASE_INFO_WORDS.includes(arg)) {
+            if (!server.baseLocation) return this.client.intlGet(guildId, 'baseNotSet');
+            return this.client.intlGet(guildId, 'baseInfo', {
+                location: this.getPos(server.baseLocation).string,
+                name: server.baseLocation.setBy || '?'
+            });
+        }
+
+        const player = this.rustplus.team ? this.rustplus.team.getPlayer(callerSteamId) : null;
+        if (!player || typeof player.x !== 'number' || typeof player.y !== 'number') {
+            return this.client.intlGet(guildId, 'baseNoPosition');
+        }
+        server.baseLocation = { x: player.x, y: player.y, setBy: player.name, setAt: Date.now() };
+        this.client.setInstance(guildId, instance);
+        this.nearBase = {};
+        return this.client.intlGet(guildId, 'baseSet', {
+            location: this.getPos(server.baseLocation).string,
+            distance: NEAR_BASE_GRIDS
+        });
+    }
 
     getCommandBradley(isInfoChannel = false, now = Date.now()) {
         const guildId = this.rustplus.guildId;
