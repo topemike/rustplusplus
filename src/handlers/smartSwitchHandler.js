@@ -19,6 +19,7 @@
 */
 
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const SwitchOverride = require('../util/switchOverride.js');
 const Map = require('../util/map.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const Timer = require('../util/timer');
@@ -227,9 +228,14 @@ module.exports = {
             else if (content.autoDayNightOnOff === 5 && content.location !== null) { /* AUTO-ON-PROXIMITY */
                 let shouldBeOn = false;
                 for (const player of rustplus.team.players) {
+                    if (!player.isOnline) continue;
                     if (Map.getDistance(content.x, content.y, player.x, player.y) <= content.proximity) {
                         shouldBeOn = true;
                     }
+                }
+                if (SwitchOverride.respectManual(content, shouldBeOn)) {
+                    client.setInstance(guildId, instance);
+                    continue;
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -259,9 +265,14 @@ module.exports = {
             else if (content.autoDayNightOnOff === 6 && content.location !== null) { /* AUTO-OFF-PROXIMITY */
                 let shouldBeOn = true;
                 for (const player of rustplus.team.players) {
+                    if (!player.isOnline) continue;
                     if (Map.getDistance(content.x, content.y, player.x, player.y) <= content.proximity) {
                         shouldBeOn = false;
                     }
+                }
+                if (SwitchOverride.respectManual(content, shouldBeOn)) {
+                    client.setInstance(guildId, instance);
+                    continue;
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -293,6 +304,10 @@ module.exports = {
                 for (const player of rustplus.team.players) {
                     if (player.isOnline) shouldBeOn = true;
                 }
+                if (SwitchOverride.respectManual(content, shouldBeOn)) {
+                    client.setInstance(guildId, instance);
+                    continue;
+                }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
                     instance.serverList[serverId].switches[entityId].active = shouldBeOn;
@@ -322,6 +337,10 @@ module.exports = {
                 let shouldBeOn = true;
                 for (const player of rustplus.team.players) {
                     if (player.isOnline) shouldBeOn = false;
+                }
+                if (SwitchOverride.respectManual(content, shouldBeOn)) {
+                    client.setInstance(guildId, instance);
+                    continue;
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -499,6 +518,7 @@ module.exports = {
 
         const prevActive = switches[entityId].active;
         switches[entityId].active = active;
+        SwitchOverride.setManual(switches[entityId], active);
         client.setInstance(guildId, instance);
 
         rustplus.interactionSwitches.push(entityId);
