@@ -114,8 +114,11 @@ module.exports = {
                 await ServerLifecycle.sendWipeCleanupOffer(client, guildId, serverId);
                 /* The Deep Sea cycle starts again after a wipe */
                 const wipedInstance = client.getInstance(guildId);
-                if (wipedInstance.serverList[serverId] && wipedInstance.serverList[serverId].deepSea) {
-                    delete wipedInstance.serverList[serverId].deepSea;
+                /* The base is somewhere else after a wipe */
+                const wipedServer = wipedInstance.serverList[serverId];
+                if (wipedServer && (wipedServer.deepSea || wipedServer.baseLocation)) {
+                    delete wipedServer.deepSea;
+                    delete wipedServer.baseLocation;
                     client.setInstance(guildId, wipedInstance);
                 }
             }

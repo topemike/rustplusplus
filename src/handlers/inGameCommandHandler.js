@@ -94,6 +94,12 @@ module.exports = {
             commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxHeli')}`) {
             rustplus.sendInGameMessage(rustplus.getCommandHeli());
         }
+        else if (commandLowerCase === `${prefix}${client.intlGet('en', 'commandSyntaxBase')}` ||
+            commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxBase')} `) ||
+            commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxBase')}` ||
+            commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxBase')} `)) {
+            rustplus.sendInGameMessage(rustplus.getCommandBase(command, callerSteamId));
+        }
         else if (commandLowerCase === `${prefix}${client.intlGet('en', 'commandSyntaxBradley')}` ||
             commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxBradley')}`) {
             rustplus.sendInGameMessage(rustplus.getCommandBradley());

@@ -1378,6 +1378,10 @@ class RustPlus extends RustPlusLib {
         return strings;
     }
 
+    getCommandBase(command, callerSteamId) {
+        return this.mapMarkers.extraEvents.getCommandBase(command, callerSteamId);
+    }
+
     getCommandBradley(isInfoChannel = false) {
         return this.mapMarkers.extraEvents.getCommandBradley(isInfoChannel);
     }

@@ -5,6 +5,12 @@
         "inGame": false,
         "voice": true
     },
+    "cargoNearBaseSetting": {
+        "image": "cargoship_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": true
+    },
     "cargoShipLeftSetting": {
         "image": "cargoship_logo.png",
         "discord": true,
@@ -27,6 +33,12 @@
         "image": "patrol_helicopter_logo.png",
         "discord": true,
         "inGame": false,
+        "voice": true
+    },
+    "heliNearBaseSetting": {
+        "image": "patrol_helicopter_logo.png",
+        "discord": true,
+        "inGame": true,
         "voice": true
     },
     "patrolHelicopterLeftSetting": {
