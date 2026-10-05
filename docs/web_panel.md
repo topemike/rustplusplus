@@ -75,6 +75,39 @@ A partir de ahora, usa siempre los dos `-f` al actualizar.
 
 Abre `https://rust.tudominio.com`. La primera vez puede tardar un minuto en salir el candado, mientras se crea el certificado.
 
+## Si ya tienes nginx en el VPS
+
+Si el paso 5 da `failed to bind host port 0.0.0.0:80/tcp: address already in use` y `sudo ss -tlnp | grep ':80 '` muestra `nginx`, usa tu nginx en lugar de Caddy. Así no tocas tus otras webs.
+
+1. Quita el contenedor de Caddy y arranca el bot publicando el panel solo para el propio VPS:
+
+   ```bash
+   docker rm -f rpp-web
+   cd /opt/rustplusplus
+   docker compose -f compose.prod.yml -f docker-compose.nginx.yml up -d --build
+   ```
+
+   A partir de ahora, usa estos dos `-f` al actualizar.
+
+2. Crea el sitio en nginx (cambia `rust.tudominio.com` por tu dominio):
+
+   ```bash
+   sed 's/rust.tudominio.com/TU_DOMINIO/' web/nginx-rustplusplus.conf > /etc/nginx/sites-available/rustplusplus
+   ln -s /etc/nginx/sites-available/rustplusplus /etc/nginx/sites-enabled/
+   nginx -t && systemctl reload nginx
+   ```
+
+   Si `nginx -t` da error, no recargues: borra el enlace con `rm /etc/nginx/sites-enabled/rustplusplus` y revisa el mensaje.
+
+3. HTTPS con certbot:
+
+   ```bash
+   apt install -y certbot python3-certbot-nginx   # solo si no lo tienes
+   certbot --nginx -d TU_DOMINIO
+   ```
+
+   Certbot añade el certificado al sitio y lo renueva solo.
+
 ## Si algo no funciona
 
 - **No carga la web**: comprueba que el registro DNS apunta a la IP correcta (`ping rust.tudominio.com`) y que los puertos 80 y 443 están abiertos.

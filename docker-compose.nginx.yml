@@ -1,0 +1,9 @@
+# Web panel behind an nginx that is already installed on the VPS (instead of Caddy).
+#   docker compose -f compose.prod.yml -f docker-compose.nginx.yml up -d --build
+#
+# The panel is published only on 127.0.0.1:8080, so it is reachable from nginx on the
+# same machine but not from the internet. See docs/web_panel.md.
+services:
+  app:
+    ports:
+      - "127.0.0.1:8080:8080"
