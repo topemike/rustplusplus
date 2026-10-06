@@ -76,7 +76,8 @@ async function sendAlert(client, guildId, title, description, color, everyone) {
         embeds: [DiscordEmbeds.getEmbed({ color: color, title: title, description: description, timestamp: true })]
     };
     if (everyone) content.content = '@everyone';
-    await DiscordMessages.sendMessage(guildId, content, null, instance.channelId.activity);
+    /* Own channel for base alerts (upkeep, looted boxes); #activity as fallback */
+    await DiscordMessages.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
 }
 
 /**
