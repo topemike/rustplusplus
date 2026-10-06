@@ -22,7 +22,7 @@
  *  Deep Sea timer.
  *  Rust+ does not report the Deep Sea. It stays open a fixed time (about 3 h) and then closed a
  *  RANDOM time (1h30 to 2h30 by default), so only the closing can be predicted exactly:
- *  - Marked open: one warning 10 minutes before it closes.
+ *  - Marked open: a warning 10 minutes before it closes and one when it closes.
  *  - Closed: the bot gives the window in which it will reopen, warns when the window starts and
  *    reminds every 30 minutes until the latest time. Then one last reminder to mark it, and silence.
  *  - If the closed time measured two cycles in a row is the same (+-3 min), the server has a fixed
@@ -201,6 +201,11 @@ function dueWarnings(ds, now = Date.now()) {
                 due.push({ key: key, type: 'closesIn', minutes: minutes });
             }
         }
+    }
+    /* It has just closed (by the timer) */
+    if (before !== null && before.phase === 'open' && inWindow(before.closesAt)) {
+        const key = `${before.closesAt}-0`;
+        if (!ds.warned[key]) due.push({ key: key, type: 'closingNow' });
     }
     if (p !== null && p.phase === 'closed' && p.fixed) {
         for (const minutes of Config.deepSea.openWarnMinutes) {
