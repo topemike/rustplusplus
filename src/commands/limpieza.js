@@ -20,7 +20,7 @@
 
 /*
  *  /limpieza (admins): shows a confirmation button, nothing is deleted until it is pressed.
- *  - otros_servers: everything about servers other than the active one.
+ *  - server: everything about servers other than the active one (after moving to another server).
  *  - todo: everything about every server (disconnects the bot). Settings, credentials and the
  *    market watch list are kept.
  */
@@ -39,7 +39,7 @@ module.exports = {
 		return new Builder.SlashCommandBuilder()
 			.setName('limpieza')
 			.setDescription(client.intlGet(guildId, 'commandsCleanupDesc'))
-			.addSubcommand(s => s.setName('otros_servers').setDescription(client.intlGet(guildId, 'commandsCleanupOthersDesc')))
+			.addSubcommand(s => s.setName('server').setDescription(client.intlGet(guildId, 'commandsCleanupOthersDesc')))
 			.addSubcommand(s => s.setName('todo').setDescription(client.intlGet(guildId, 'commandsCleanupAllDesc')));
 	},
 
@@ -66,7 +66,7 @@ module.exports = {
 
 		const active = instance.activeServer;
 		let content = null;
-		if (subcommand === 'otros_servers') {
+		if (subcommand === 'server') {
 			content = ServerLifecycle.getServerChangeMessage(client, guildId, active);
 		}
 		else {
