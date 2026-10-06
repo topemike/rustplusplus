@@ -107,6 +107,14 @@ async function cleanupUnreachableDevices(client, guildId, serverId) {
 
     client.setInstance(guildId, instance);
 
+    /* The base alerts were about the previous wipe */
+    if (instance.channelId.base) {
+        try {
+            await DiscordTools.clearTextChannel(guildId, instance.channelId.base, 100);
+        }
+        catch (e) { /* ignore */ }
+    }
+
     for (const groupId of changedGroups) {
         try {
             await DiscordMessages.sendSmartSwitchGroupMessage(guildId, serverId, groupId);
