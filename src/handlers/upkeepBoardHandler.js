@@ -19,9 +19,8 @@
 */
 
 /*
- *  Upkeep board in the information channel: every Tool Cupboard with a Storage Monitor, with a
- *  live countdown until its upkeep runs out (Discord relative timestamps count down by themselves).
- *  The message is only edited when something changes (refill, new TC, decaying...).
+ *  Upkeep board in the information channel: every Tool Cupboard with a Storage Monitor, with the
+ *  time left in hours and minutes (the message is edited once a minute) and the exact date.
  */
 
 const Constants = require('../util/constants.js');
@@ -32,8 +31,6 @@ const UpkeepRates = require('../util/upkeepRates.js');
 const HOUR_MS = 60 * 60 * 1000;
 const signatures = new Object();
 
-/* A refill changes the expiry a lot; small changes (upkeep cost recalculated) are ignored */
-const EXPIRY_TOLERANCE_S = 120;
 
 function getTcList(instance, rustplus) {
     const server = instance.serverList[rustplus.serverId];
@@ -58,6 +55,13 @@ function getTcList(instance, rustplus) {
     return list.sort((a, b) => rank(a) - rank(b));
 }
 
+/* "14h 23m", "2d 3h 5m" (minutes, the board is refreshed every minute) */
+function hoursMinutes(ms) {
+    const total = Math.max(0, Math.ceil(ms / 60000));
+    const d = Math.floor(total / 1440), h = Math.floor((total % 1440) / 60), m = total % 60;
+    return (d ? `${d}d ` : '') + ((d || h) ? `${h}h ` : '') + `${m}m`;
+}
+
 function line(client, guildId, tc, now) {
     const where = tc.location ? ` (${tc.location})` : '';
     if (!tc.reachable) return client.intlGet(guildId, 'upkeepBoardNoData', { name: tc.name, where: where });
@@ -67,7 +71,7 @@ function line(client, guildId, tc, now) {
     const advice = left < 24 * HOUR_MS ? UpkeepRates.shortAdvice(client, guildId, tc.breakdown) : null;
     return client.intlGet(guildId, 'upkeepBoardLine', {
         icon: icon, name: tc.name, where: where,
-        countdown: `<t:${tc.expiry}:R>`, date: `<t:${tc.expiry}:f>`
+        countdown: `\`${hoursMinutes(left)}\``, date: `<t:${tc.expiry}:f>`
     }) + (advice ? `\n\u2003${advice}` : '');
 }
 
@@ -89,7 +93,7 @@ function getContent(client, guildId, tcs, now) {
 function signature(tcs, now) {
     return JSON.stringify(tcs.map(tc => [tc.id, tc.name, tc.location, tc.reachable,
         tc.breakdown ? tc.breakdown.add.map(a => `${a.key}${Math.round(a.amount / 1000)}`).join() : '',
-        Math.round(tc.expiry / EXPIRY_TOLERANCE_S),
+        tc.expiry ? Math.ceil((tc.expiry * 1000 - now) / 60000) : 0,
         tc.expiry ? (tc.expiry * 1000 - now < 6 * HOUR_MS ? 2 : (tc.expiry * 1000 - now < 24 * HOUR_MS ? 1 : 0)) : -1]));
 }
 
@@ -115,5 +119,6 @@ module.exports = {
 
     getTcList: getTcList,
     getContent: getContent,
+    hoursMinutes: hoursMinutes,
     _reset: () => { for (const k of Object.keys(signatures)) delete signatures[k]; }
 };
