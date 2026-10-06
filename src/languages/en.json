@@ -235,6 +235,8 @@
     "commandsCraftDesc": "Display the cost to craft an item.",
     "commandsCraftQuantityDesc": "The quantity of items to craft.",
     "commandsCredentialsAddDesc": "Add FCM Credentials.",
+    "commandsCleanupDesc": "Remove Smart Devices that no longer respond (e.g. after a wipe).",
+    "wipeCleanupNothing": "There are no Smart Devices on the active server.",
     "commandsCredentialsDesc": "Set/Clear the FCM Credentials for the user account.",
     "commandsCredentialsRemoveDesc": "Remove FCM Credentials.",
     "commandsCredentialsRemoveSteamIdDesc": "SteamId of the FCM Credentials to remove.",

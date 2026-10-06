@@ -39,17 +39,18 @@ function countUnreachable(server) {
     };
 }
 
-async function sendWipeCleanupOffer(client, guildId, serverId) {
+/* Message with the cleanup button for a server, or null when it has no devices */
+function getWipeCleanupMessage(client, guildId, serverId) {
     const instance = client.getInstance(guildId);
     const server = instance.serverList[serverId];
-    if (!server) return;
+    if (!server) return null;
 
     const total = Object.keys(server.switches || {}).length + Object.keys(server.alarms || {}).length +
         Object.keys(server.storageMonitors || {}).length;
-    if (total === 0) return;
+    if (total === 0) return null;
 
     const unreachable = countUnreachable(server);
-    await DiscordMessages.sendMessage(guildId, {
+    return {
         embeds: [DiscordEmbeds.getEmbed({
             color: Constants.COLOR_DEFAULT,
             title: client.intlGet(guildId, 'wipeCleanupTitle'),
@@ -65,7 +66,14 @@ async function sendWipeCleanupOffer(client, guildId, serverId) {
                 .setCustomId(`WipeCleanup${JSON.stringify({ serverId: serverId })}`)
                 .setLabel(client.intlGet(guildId, 'wipeCleanupCap'))
                 .setStyle(Discord.ButtonStyle.Danger))]
-    }, null, instance.channelId.activity);
+    };
+}
+
+async function sendWipeCleanupOffer(client, guildId, serverId) {
+    const instance = client.getInstance(guildId);
+    const content = getWipeCleanupMessage(client, guildId, serverId);
+    if (!content) return;
+    await DiscordMessages.sendMessage(guildId, content, null, instance.channelId.activity);
 }
 
 /**
@@ -119,6 +127,7 @@ async function cleanupUnreachableDevices(client, guildId, serverId) {
 
 module.exports = {
     sendWipeCleanupOffer: sendWipeCleanupOffer,
+    getWipeCleanupMessage: getWipeCleanupMessage,
     cleanupUnreachableDevices: cleanupUnreachableDevices,
     countUnreachable: countUnreachable
 };
