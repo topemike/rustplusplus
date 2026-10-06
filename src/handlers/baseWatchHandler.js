@@ -120,8 +120,8 @@ async function onStorageUpdate(client, rustplus, entityId, prevItems, payload, n
 
     /* Upkeep */
     if (payload.capacity === Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY) {
-        /* Learn what the base costs per material (only while the whole team is offline) */
-        UpkeepRates.observe(entity, payload.items, isWholeTeamOffline(rustplus), nowMs);
+        /* Learn what the base costs per material from the upkeep-sized drops */
+        UpkeepRates.observe(entity, payload.items, payload.protectionExpiry, nowMs);
         const crossed = checkUpkeep(entity, payload.protectionExpiry, nowMs);
         client.setInstance(guildId, instance);
 

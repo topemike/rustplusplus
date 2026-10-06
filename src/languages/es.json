@@ -925,7 +925,7 @@
     "upkeepFirstOut": "Se acaba primero: {material}.",
     "upkeepAddFor24": "Se acaba primero: {material}. Para 24 h añade: {items}.",
     "upkeepFor24": "Para 24 h añade:",
-    "upkeepLearning": "Upkeep por material: aprendiendo (necesita un par de horas con todo el team desconectado).",
+    "upkeepLearning": "Upkeep por material: aprendiendo (basta con una hora de juego normal).",
     "upkeepBoardTitle": "🏠 Upkeep de los TC",
     "upkeepForItem": "Upkeep for {item} is {cost}.",
     "upkeepLowDesc": "El Tool Cupboard {name} ({location}) está protegido hasta el {date}. Rellena el upkeep o la base empezará a caerse por decay.",

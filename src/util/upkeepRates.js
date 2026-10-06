@@ -21,16 +21,30 @@
 /*
  *  Upkeep per material for a Tool Cupboard.
  *  Rust+ only gives the TC contents and the total protection time, not what the base costs.
- *  The cost is learned by watching the materials go down while the whole team is offline (nobody
- *  adds or takes anything, so every drop is upkeep). The measured proportions are then anchored to
- *  the protection time from the game, which is the time of the material that runs out first.
+ *  The cost is learned from every pair of snapshots in which the materials only went down by
+ *  "upkeep-sized" amounts, online or offline:
+ *  - A material can never be consumed faster than amount / protection time (every material lasts
+ *    at least the protection time), so a bigger drop is somebody taking items: that interval is
+ *    skipped. Any increase (refill) is skipped too.
+ *  - If the protection time jumps while the materials do not change, the base cost changed
+ *    (built, upgraded or demolished): the learned costs are scaled by that factor.
+ *  The proportions are finally anchored to the protection time from the game, which is the time
+ *  of the material that runs out first.
  */
 
 const HOUR_MS = 60 * 60 * 1000;
-/* Minimum offline time measured before giving numbers */
-const MIN_HOURS = 2;
+/* Minimum clean time measured before giving numbers */
+const MIN_HOURS = 1;
 /* Older measurements fade out: only about the last day counts */
 const MAX_HOURS = 24;
+/* Tolerances when classifying an interval */
+const DROP_SLACK = 10;            /* items */
+const DROP_FACTOR = 1.5;
+const LEARNED_FACTOR = 3;
+const MIN_INTERVAL_MS = 20 * 60 * 1000;
+const EXPIRY_JUMP_MS = 10 * 60 * 1000;
+/* Longer gaps between snapshots are not used (bot offline...) */
+const MAX_GAP_MS = 2 * HOUR_MS;
 
 const MATERIALS = [
     { key: 'wood', itemId: '-151838493' },
@@ -49,18 +63,55 @@ function counts(items) {
     return out;
 }
 
-function addToHistory(st, window) {
-    const hours = (window.tLast - window.t0) / HOUR_MS;
-    if (hours <= 0) return;
-    for (const m of MATERIALS) {
-        st.used[m.key] = (st.used[m.key] || 0) + Math.max(0, window.c0[m.key] - window.cLast[m.key]);
-    }
-    st.hours += hours;
+function capHistory(st) {
     if (st.hours > MAX_HOURS) {
         const f = MAX_HOURS / st.hours;
         for (const k of Object.keys(st.used)) st.used[k] *= f;
         st.hours = MAX_HOURS;
     }
+}
+
+/**
+ *  Classify the interval between two snapshots and learn from it.
+ *  @return {string} 'clean' | 'refill' | 'taken' | 'cost' | 'skip'
+ */
+function learn(st, prev, cur) {
+    const dt = cur.t - prev.t;
+    if (dt <= 0 || dt > MAX_GAP_MS || !prev.expiry || !cur.expiry) return 'skip';
+
+    if (MATERIALS.some(m => cur.c[m.key] > prev.c[m.key])) return 'refill';
+
+    const gameHours = (prev.expiry * 1000 - prev.t) / HOUR_MS;
+    if (gameHours <= 0) return 'skip';
+    const drops = {};
+    /* Upkeep is paid in small chunks every few minutes, so short intervals may contain one */
+    const dtH = Math.max(dt, MIN_INTERVAL_MS) / HOUR_MS;
+    const known = st.hours >= MIN_HOURS;
+    for (const m of MATERIALS) {
+        const d = prev.c[m.key] - cur.c[m.key];
+        /* Upkeep can never take more than amount / protection time per hour from a material,
+           and once learned, not much more than its usual cost */
+        let bound = prev.c[m.key] * dtH / gameHours * DROP_FACTOR + DROP_SLACK;
+        if (known) bound = Math.min(bound, ((st.used[m.key] || 0) / st.hours) * dtH * LEARNED_FACTOR + DROP_SLACK);
+        if (d > bound) return 'taken';
+        drops[m.key] = d;
+    }
+
+    /* Same materials (only upkeep-sized drops) but the protection end moved: the cost changed */
+    const expiryMove = (cur.expiry - prev.expiry) * 1000;
+    if (Math.abs(expiryMove) > EXPIRY_JUMP_MS) {
+        const prevLeft = prev.expiry * 1000 - cur.t, curLeft = cur.expiry * 1000 - cur.t;
+        if (prevLeft > 0 && curLeft > 0) {
+            const f = prevLeft / curLeft;   /* > 1: the base costs more now */
+            for (const k of Object.keys(st.used)) st.used[k] *= f;
+        }
+        return 'cost';
+    }
+
+    for (const m of MATERIALS) st.used[m.key] = (st.used[m.key] || 0) + drops[m.key];
+    st.hours += dt / HOUR_MS;
+    capHistory(st);
+    return 'clean';
 }
 
 function fmtAmount(n) {
@@ -85,30 +136,18 @@ module.exports = {
     counts: counts,
 
     /**
-     *  Feed a fresh snapshot of a TC. Stores the learning state in entity.upkeepStats.
+     *  Feed a fresh snapshot of a TC (any time, team online or not). State in entity.upkeepStats.
+     *  @return {string} How the interval since the previous snapshot was classified.
      */
-    observe: function (entity, items, teamOffline, now = Date.now()) {
-        if (!entity.upkeepStats) entity.upkeepStats = { used: {}, hours: 0, window: null };
+    observe: function (entity, items, expirySeconds, now = Date.now()) {
+        if (!entity.upkeepStats || entity.upkeepStats.window !== undefined) {
+            entity.upkeepStats = { used: {}, hours: 0, last: null };
+        }
         const st = entity.upkeepStats;
-        const c = counts(items);
-
-        if (!teamOffline) {
-            if (st.window) addToHistory(st, st.window);
-            st.window = null;
-            return;
-        }
-        if (!st.window) {
-            st.window = { t0: now, c0: c, tLast: now, cLast: c };
-            return;
-        }
-        /* Something was added (should not happen offline): close the window and start again */
-        if (MATERIALS.some(m => c[m.key] > st.window.cLast[m.key])) {
-            addToHistory(st, st.window);
-            st.window = { t0: now, c0: c, tLast: now, cLast: c };
-            return;
-        }
-        st.window.tLast = now;
-        st.window.cLast = c;
+        const cur = { t: now, c: counts(items), expiry: expirySeconds || 0 };
+        const result = st.last ? learn(st, st.last, cur) : 'skip';
+        st.last = cur;
+        return result;
     },
 
     /**
@@ -116,16 +155,9 @@ module.exports = {
      */
     rates: function (entity) {
         const st = entity.upkeepStats;
-        if (!st) return null;
-        let hours = st.hours;
-        const used = Object.assign({}, st.used);
-        if (st.window) {
-            hours += (st.window.tLast - st.window.t0) / HOUR_MS;
-            for (const m of MATERIALS) used[m.key] = (used[m.key] || 0) + Math.max(0, st.window.c0[m.key] - st.window.cLast[m.key]);
-        }
-        if (hours < MIN_HOURS) return null;
+        if (!st || st.hours < MIN_HOURS) return null;
         const rates = {};
-        for (const m of MATERIALS) if ((used[m.key] || 0) > 0) rates[m.key] = used[m.key] / hours;
+        for (const m of MATERIALS) if ((st.used[m.key] || 0) > 0) rates[m.key] = st.used[m.key] / st.hours;
         return Object.keys(rates).length > 0 ? rates : null;
     },
 
