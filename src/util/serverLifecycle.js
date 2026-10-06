@@ -136,6 +136,7 @@ function otherServers(instance, keepServerId) {
 /* Message offering to remove everything about the servers other than `keepServerId`, or null */
 function getServerChangeMessage(client, guildId, keepServerId) {
     const instance = client.getInstance(guildId);
+    if (!keepServerId || !instance.serverList[keepServerId]) return null;
     const others = otherServers(instance, keepServerId);
     if (others.length === 0) return null;
     const keep = instance.serverList[keepServerId];
@@ -210,7 +211,81 @@ async function purgeOtherServers(client, guildId, keepServerId) {
     return removed;
 }
 
+/* Message with the cleanup button for dead Smart Devices of a server, or null when it has none */
+function getWipeCleanupMessage(client, guildId, serverId) {
+    const instance = client.getInstance(guildId);
+    const server = instance.serverList[serverId];
+    if (!server) return null;
+    const unreachable = countUnreachable(server);
+    if (unreachable.switches + unreachable.alarms + unreachable.storageMonitors === 0) return null;
+    return {
+        embeds: [DiscordEmbeds.getEmbed({
+            color: Constants.COLOR_DEFAULT,
+            title: client.intlGet(guildId, 'wipeCleanupTitle'),
+            description: client.intlGet(guildId, 'wipeCleanupDesc', unreachable),
+            footer: { text: server.title }
+        })],
+        components: [new Discord.ActionRowBuilder().addComponents(
+            new Discord.ButtonBuilder()
+                .setCustomId(`WipeCleanup${JSON.stringify({ serverId: serverId })}`)
+                .setLabel(client.intlGet(guildId, 'wipeCleanupCap'))
+                .setStyle(Discord.ButtonStyle.Danger))]
+    };
+}
+
+/* Message with the button that deletes ALL game data (every server, including the active one) */
+function getPurgeAllMessage(client, guildId) {
+    const instance = client.getInstance(guildId);
+    const servers = Object.values(instance.serverList || {});
+    const trackers = Object.keys(instance.trackers || {}).length;
+    if (servers.length === 0 && trackers === 0) return null;
+    return {
+        embeds: [DiscordEmbeds.getEmbed({
+            color: Constants.COLOR_INACTIVE,
+            title: client.intlGet(guildId, 'purgeAllTitle'),
+            description: client.intlGet(guildId, 'purgeAllDesc', {
+                servers: servers.map(s => `• ${s.title}`).join('\n') || '-',
+                trackers: trackers
+            })
+        })],
+        components: [new Discord.ActionRowBuilder().addComponents(
+            new Discord.ButtonBuilder()
+                .setCustomId('PurgeAll')
+                .setLabel(client.intlGet(guildId, 'purgeAllCap'))
+                .setStyle(Discord.ButtonStyle.Danger))]
+    };
+}
+
+/**
+ *  Deletes everything about every server: disconnects the bot, empties the device channels and
+ *  #information, then removes all servers, trackers and history (see purgeOtherServers).
+ */
+async function purgeEverything(client, guildId) {
+    const instance = client.getInstance(guildId);
+    const rustplus = client.rustplusInstances[guildId];
+    if (rustplus) {
+        rustplus.isDeleted = true;
+        try { rustplus.disconnect(); } catch (e) { /* already disconnected */ }
+        delete client.rustplusInstances[guildId];
+    }
+    instance.activeServer = null;
+    for (const key of Object.keys(instance.informationMessageId || {})) instance.informationMessageId[key] = null;
+    client.setInstance(guildId, instance);
+    try { client.resetRustplusVariables(guildId); } catch (e) { /* not critical */ }
+
+    for (const channelId of [instance.channelId.switches, instance.channelId.switchGroups,
+        instance.channelId.storageMonitors, instance.channelId.information]) {
+        if (!channelId) continue;
+        try { await DiscordTools.clearTextChannel(guildId, channelId, 1000); }
+        catch (e) { /* ignore */ }
+    }
+    return await purgeOtherServers(client, guildId, null);
+}
+
 module.exports = {
+    getWipeCleanupMessage: getWipeCleanupMessage,
+    getPurgeAllMessage: getPurgeAllMessage,
+    purgeEverything: purgeEverything,
     getServerChangeMessage: getServerChangeMessage,
     sendServerChangeOffer: sendServerChangeOffer,
     purgeOtherServers: purgeOtherServers,
