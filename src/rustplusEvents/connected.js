@@ -127,6 +127,21 @@ module.exports = {
             client.log(client.intlGet(null, 'errorCap'), `Server lifecycle: ${e}`, 'error');
         }
 
+        /* Moved to another server: offer to remove everything about the previous ones */
+        try {
+            const lastInstance = client.getInstance(guildId);
+            const previous = lastInstance.lastConnectedServer;
+            if (previous !== serverId) {
+                lastInstance.lastConnectedServer = serverId;
+                client.setInstance(guildId, lastInstance);
+                /* Also on the first connection after updating, if old servers are still stored */
+                await ServerLifecycle.sendServerChangeOffer(client, guildId, serverId);
+            }
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Server change: ${e}`, 'error');
+        }
+
         await PollingHandler.pollingHandler(rustplus, client);
         rustplus.pollingTaskId = setInterval(PollingHandler.pollingHandler, client.pollingIntervalMs, rustplus, client);
         rustplus.isOperational = true;

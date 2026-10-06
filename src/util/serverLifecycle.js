@@ -125,7 +125,147 @@ async function cleanupUnreachableDevices(client, guildId, serverId) {
     return removed;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Moving to another server                                                   */
+/* ------------------------------------------------------------------------- */
+
+function otherServers(instance, keepServerId) {
+    return Object.keys(instance.serverList || {}).filter(id => id !== keepServerId);
+}
+
+/* Message offering to remove everything about the servers other than `keepServerId`, or null */
+function getServerChangeMessage(client, guildId, keepServerId) {
+    const instance = client.getInstance(guildId);
+    if (!keepServerId || !instance.serverList[keepServerId]) return null;
+    const others = otherServers(instance, keepServerId);
+    if (others.length === 0) return null;
+    const keep = instance.serverList[keepServerId];
+    const trackers = Object.values(instance.trackers || {}).filter(t => t.serverId !== keepServerId).length;
+    return {
+        embeds: [DiscordEmbeds.getEmbed({
+            color: Constants.COLOR_DEFAULT,
+            title: client.intlGet(guildId, 'serverChangeTitle', { server: keep ? keep.title : keepServerId }),
+            description: client.intlGet(guildId, 'serverChangeDesc', {
+                servers: others.map(id => `• ${instance.serverList[id].title || id}`).join('\n'),
+                trackers: trackers
+            })
+        })],
+        components: [new Discord.ActionRowBuilder().addComponents(
+            new Discord.ButtonBuilder()
+                .setCustomId(`ServerChangeCleanup${JSON.stringify({ serverId: keepServerId })}`)
+                .setLabel(client.intlGet(guildId, 'serverChangeCap'))
+                .setStyle(Discord.ButtonStyle.Danger))]
+    };
+}
+
+/* Offered when the bot connects to a different server than the previous one */
+async function sendServerChangeOffer(client, guildId, keepServerId) {
+    const instance = client.getInstance(guildId);
+    const content = getServerChangeMessage(client, guildId, keepServerId);
+    if (!content) return;
+    await DiscordMessages.sendMessage(guildId, content, null, instance.channelId.activity);
+}
+
+/**
+ *  Removes everything that belongs to servers other than `keepServerId`: the servers with their
+ *  devices, groups, Deep Sea and base, their trackers and tracker history, the event and raid
+ *  history, and the messages in #events, #activity and #base.
+ *  @return {Object} { servers, trackers }
+ */
+async function purgeOtherServers(client, guildId, keepServerId) {
+    const instance = client.getInstance(guildId);
+    const removed = { servers: 0, trackers: 0 };
+
+    for (const serverId of otherServers(instance, keepServerId)) {
+        const server = instance.serverList[serverId];
+        for (const alarm of Object.values(server.alarms || {})) {
+            try { await DiscordTools.deleteMessageById(guildId, instance.channelId.alarms, alarm.messageId); }
+            catch (e) { /* already gone */ }
+        }
+        try { await DiscordTools.deleteMessageById(guildId, instance.channelId.servers, server.messageId); }
+        catch (e) { /* already gone */ }
+        delete instance.serverList[serverId];
+        if (instance.serverListLite) delete instance.serverListLite[serverId];
+        removed.servers++;
+    }
+
+    for (const [trackerId, tracker] of Object.entries(instance.trackers || {})) {
+        if (tracker.serverId === keepServerId) continue;
+        try { await DiscordTools.deleteMessageById(guildId, instance.channelId.trackers, tracker.messageId); }
+        catch (e) { /* already gone */ }
+        delete instance.trackers[trackerId];
+        removed.trackers++;
+    }
+    client.setInstance(guildId, instance);
+
+    try { require('./trackerIntel.js').keepOnly(guildId, Object.keys(instance.trackers || {})); }
+    catch (e) { /* not critical */ }
+    try { require('./dailyStats.js').clear(guildId); }
+    catch (e) { /* not critical */ }
+
+    for (const channelId of [instance.channelId.events, instance.channelId.base, instance.channelId.activity]) {
+        if (!channelId) continue;
+        try { await DiscordTools.clearTextChannel(guildId, channelId, 1000); }
+        catch (e) { /* ignore */ }
+    }
+    return removed;
+}
+
+/* Message with the button that deletes ALL game data (every server, including the active one) */
+function getPurgeAllMessage(client, guildId) {
+    const instance = client.getInstance(guildId);
+    const servers = Object.values(instance.serverList || {});
+    const trackers = Object.keys(instance.trackers || {}).length;
+    if (servers.length === 0 && trackers === 0) return null;
+    return {
+        embeds: [DiscordEmbeds.getEmbed({
+            color: Constants.COLOR_INACTIVE,
+            title: client.intlGet(guildId, 'purgeAllTitle'),
+            description: client.intlGet(guildId, 'purgeAllDesc', {
+                servers: servers.map(s => `• ${s.title}`).join('\n') || '-',
+                trackers: trackers
+            })
+        })],
+        components: [new Discord.ActionRowBuilder().addComponents(
+            new Discord.ButtonBuilder()
+                .setCustomId('PurgeAll')
+                .setLabel(client.intlGet(guildId, 'purgeAllCap'))
+                .setStyle(Discord.ButtonStyle.Danger))]
+    };
+}
+
+/**
+ *  Deletes everything about every server: disconnects the bot, empties the device channels and
+ *  #information, then removes all servers, trackers and history (see purgeOtherServers).
+ */
+async function purgeEverything(client, guildId) {
+    const instance = client.getInstance(guildId);
+    const rustplus = client.rustplusInstances[guildId];
+    if (rustplus) {
+        rustplus.isDeleted = true;
+        try { rustplus.disconnect(); } catch (e) { /* already disconnected */ }
+        delete client.rustplusInstances[guildId];
+    }
+    instance.activeServer = null;
+    for (const key of Object.keys(instance.informationMessageId || {})) instance.informationMessageId[key] = null;
+    client.setInstance(guildId, instance);
+    try { client.resetRustplusVariables(guildId); } catch (e) { /* not critical */ }
+
+    for (const channelId of [instance.channelId.switches, instance.channelId.switchGroups,
+        instance.channelId.storageMonitors, instance.channelId.information]) {
+        if (!channelId) continue;
+        try { await DiscordTools.clearTextChannel(guildId, channelId, 1000); }
+        catch (e) { /* ignore */ }
+    }
+    return await purgeOtherServers(client, guildId, null);
+}
+
 module.exports = {
+    getPurgeAllMessage: getPurgeAllMessage,
+    purgeEverything: purgeEverything,
+    getServerChangeMessage: getServerChangeMessage,
+    sendServerChangeOffer: sendServerChangeOffer,
+    purgeOtherServers: purgeOtherServers,
     sendWipeCleanupOffer: sendWipeCleanupOffer,
     cleanupUnreachableDevices: cleanupUnreachableDevices,
     countUnreachable: countUnreachable

@@ -1145,6 +1145,62 @@ module.exports = async (client, interaction) => {
             try { await interaction.message.delete(); } catch (e) { /* already gone */ }
         }
     }
+    else if (interaction.customId === 'PurgeAll') {
+        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+            interaction.deferUpdate();
+            return;
+        }
+        await client.interactionUpdate(interaction, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_DEFAULT,
+                description: client.intlGet(guildId, 'serverChangeWorking')
+            })],
+            components: []
+        });
+        const removed = await require('../util/serverLifecycle.js').purgeEverything(client, guildId);
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `purge all ${JSON.stringify(removed)}`
+        }));
+        await DiscordMessages.sendMessage(guildId, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_ACTIVE,
+                title: client.intlGet(guildId, 'serverChangeDoneTitle'),
+                description: client.intlGet(guildId, 'purgeAllDoneDesc', removed)
+            })]
+        }, null, instance.channelId.activity);
+    }
+    else if (interaction.customId.startsWith('ServerChangeCleanup')) {
+        const ids = JSON.parse(interaction.customId.replace('ServerChangeCleanup', ''));
+
+        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+            interaction.deferUpdate();
+            return;
+        }
+
+        await client.interactionUpdate(interaction, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_DEFAULT,
+                description: client.intlGet(guildId, 'serverChangeWorking')
+            })],
+            components: []
+        });
+
+        const removed = await require('../util/serverLifecycle.js').purgeOtherServers(client, guildId, ids.serverId);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `server change cleanup ${JSON.stringify(removed)}`
+        }));
+
+        await DiscordMessages.sendMessage(guildId, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_ACTIVE,
+                title: client.intlGet(guildId, 'serverChangeDoneTitle'),
+                description: client.intlGet(guildId, 'serverChangeDoneDesc', removed)
+            })]
+        }, null, instance.channelId.activity);
+    }
     else if (interaction.customId.startsWith('WipeCleanup')) {
         const ids = JSON.parse(interaction.customId.replace('WipeCleanup', ''));
 

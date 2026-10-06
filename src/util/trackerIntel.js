@@ -373,6 +373,8 @@ function getSchedule(guildId, trackerId, now = Date.now()) {
 module.exports = {
     update: update,
     cleanup: cleanup,
+    /* Keep only the history of these trackers and write it to disk */
+    keepOnly: (guildId, trackerIds) => { cleanup(guildId, trackerIds); saveHistory(guildId); },
     save: saveHistory,
     getSchedule: getSchedule,
     HISTORY_DIR: HISTORY_DIR,
