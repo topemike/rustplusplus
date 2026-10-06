@@ -178,6 +178,9 @@
                 ds.phase === 'open' ?
                     [h('p', { class: 'big' }, h('span', { 'data-countdown': ds.closesAt }, duration(ds.closesAt - Date.now(), true))),
                         h('p', { style: 'margin:0;color:var(--ink-2)' }, `Abierto: cierra a las ${fmtTime.format(ds.closesAt)}`)] :
+                ds.phase === 'closed' && ds.opensFrom === ds.opensTo ?
+                    [h('p', { class: 'big' }, h('span', { 'data-countdown': ds.opensFrom }, duration(ds.opensFrom - Date.now(), true))),
+                        h('p', { style: 'margin:0;color:var(--ink-2)' }, `Cerrado: abre a las ${fmtTime.format(ds.opensFrom)} (ciclo fijo)`)] :
                 ds.phase === 'closed' ?
                     [h('p', { class: 'big' }, `${fmtTime.format(ds.opensFrom)}–${fmtTime.format(ds.opensTo)}`),
                         h('p', { style: 'margin:0;color:var(--ink-2)' }, Date.now() < ds.opensFrom ?
