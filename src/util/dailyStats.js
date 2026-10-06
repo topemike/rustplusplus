@@ -237,6 +237,8 @@ module.exports = {
     getRaids: (guildId) => load(guildId).raids.slice(),
     EVENT_GROUPS: EVENT_GROUPS,
     recordRaid: recordRaid,
+    /* Forget events and raids (e.g. when moving to another server) */
+    clear: (guildId) => { const data = load(guildId); data.events = []; data.raids = []; save(guildId); },
     buildSummary: buildSummary,
     isDue: isDue,
     markSent: markSent,
