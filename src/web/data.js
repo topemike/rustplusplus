@@ -31,6 +31,7 @@ const MarketSearch = require('../util/marketSearch.js');
 const RaidHandler = require('../handlers/raidHandler.js');
 const Timer = require('../util/timer');
 const TrackerIntel = require('../util/trackerIntel.js');
+const UpkeepRates = require('../util/upkeepRates.js');
 
 function activeServer(instance) {
     return instance.activeServer !== null && instance.serverList[instance.activeServer] ?
@@ -79,7 +80,9 @@ function upkeep(client, guildId) {
             location: entity.location || null,
             reachable: reachable,
             expiresAt: reachable && content.expiry ? content.expiry * 1000 : null,
-            decaying: reachable && !content.expiry
+            decaying: reachable && !content.expiry,
+            advice: reachable ? UpkeepRates.shortAdvice(client, guildId,
+                UpkeepRates.breakdown(entity, content.items, content.expiry)) : null
         });
     }
     return list;

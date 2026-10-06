@@ -163,7 +163,7 @@
                         const left = tc.expiresAt - Date.now();
                         state = left < 6 * 3600e3 ? 'bad' : (left < 24 * 3600e3 ? 'warn' : 'ok');
                         time = h('span', { 'data-countdown': tc.expiresAt }, duration(left, true));
-                        meta = `Se acaba ${fmtDayTime.format(tc.expiresAt)}`;
+                        meta = `Se acaba ${fmtDayTime.format(tc.expiresAt)}` + (tc.advice ? ` · ${tc.advice}` : '');
                     }
                     return h('li', { class: `tc ${state}` },
                         h('span', { class: 'name' }, tc.name, ' ', grid(tc.location)),

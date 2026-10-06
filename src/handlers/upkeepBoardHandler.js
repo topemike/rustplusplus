@@ -27,6 +27,7 @@
 const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const UpkeepRates = require('../util/upkeepRates.js');
 
 const HOUR_MS = 60 * 60 * 1000;
 const signatures = new Object();
@@ -48,7 +49,8 @@ function getTcList(instance, rustplus) {
             name: entity.name,
             location: entity.location,
             reachable: entity.reachable !== false && !!content && content.capacity !== 0,
-            expiry: content && content.expiry ? content.expiry : 0
+            expiry: content && content.expiry ? content.expiry : 0,
+            breakdown: content ? UpkeepRates.breakdown(entity, content.items, content.expiry) : null
         });
     }
     /* Most urgent first: decaying / no data, then by time left */
@@ -62,10 +64,11 @@ function line(client, guildId, tc, now) {
     if (!tc.expiry) return client.intlGet(guildId, 'upkeepBoardDecaying', { name: tc.name, where: where });
     const left = tc.expiry * 1000 - now;
     const icon = left < 6 * HOUR_MS ? '\u{1F534}' : (left < 24 * HOUR_MS ? '\u{1F7E1}' : '\u{1F7E2}');
+    const advice = left < 24 * HOUR_MS ? UpkeepRates.shortAdvice(client, guildId, tc.breakdown) : null;
     return client.intlGet(guildId, 'upkeepBoardLine', {
         icon: icon, name: tc.name, where: where,
         countdown: `<t:${tc.expiry}:R>`, date: `<t:${tc.expiry}:f>`
-    });
+    }) + (advice ? `\n\u2003${advice}` : '');
 }
 
 function getContent(client, guildId, tcs, now) {
@@ -85,6 +88,7 @@ function getContent(client, guildId, tcs, now) {
 /* What must change for the message to be edited: TCs, reachability and rounded expiry, colour band */
 function signature(tcs, now) {
     return JSON.stringify(tcs.map(tc => [tc.id, tc.name, tc.location, tc.reachable,
+        tc.breakdown ? tc.breakdown.add.map(a => `${a.key}${Math.round(a.amount / 1000)}`).join() : '',
         Math.round(tc.expiry / EXPIRY_TOLERANCE_S),
         tc.expiry ? (tc.expiry * 1000 - now < 6 * HOUR_MS ? 2 : (tc.expiry * 1000 - now < 24 * HOUR_MS ? 1 : 0)) : -1]));
 }

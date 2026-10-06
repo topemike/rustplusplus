@@ -348,6 +348,24 @@ module.exports = {
                 instance.serverList[serverId].storageMonitors[entityId].upkeep = `${upkeepTime}`;
             }
             description += `\n**${Client.client.intlGet(guildId, 'upkeep')}** ${upkeep}`;
+
+            /* Per material: how long each lasts and what to add (learned while the team is offline) */
+            const UpkeepRates = require('../util/upkeepRates.js');
+            const breakdown = UpkeepRates.breakdown(entity, items, expiry);
+            if (breakdown) {
+                for (const m of breakdown.materials) {
+                    description += `\n${m.limiting ? '\u26A0\uFE0F' : '\u2022'} ` +
+                        `${Client.client.intlGet(guildId, `upkeepMat_${m.key}`)}: ${UpkeepRates.fmtAmount(m.count)} ` +
+                        `(${UpkeepRates.fmtAmount(m.perHour)}/h) \u2192 \`${Timer.secondsToFullScale(m.hours * 3600) || '0m'}\``;
+                }
+                if (breakdown.add.length > 0) {
+                    description += `\n**${Client.client.intlGet(guildId, 'upkeepFor24')}** ` + breakdown.add.map(a =>
+                        `${UpkeepRates.fmtAmount(a.amount)} ${Client.client.intlGet(guildId, `upkeepMat_${a.key}`)}`).join(', ');
+                }
+            }
+            else {
+                description += `\n*${Client.client.intlGet(guildId, 'upkeepLearning')}*`;
+            }
             Client.client.setInstance(guildId, instance);
         }
 

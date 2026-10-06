@@ -66,7 +66,7 @@ module.exports = {
     },
     baseWatch: {
         /* Tool Cupboard upkeep warnings (hours left), comma separated */
-        upkeepWarnHours: (process.env.RPP_UPKEEP_WARN_HOURS || '24,6,1').split(',')
+        upkeepWarnHours: (process.env.RPP_UPKEEP_WARN_HOURS || '3,1').split(',')
             .map(h => parseFloat(h)).filter(h => h > 0),
         /* Watched containers: alert when at least this % of the items disappears at once */
         boxDropPercent: parseInt(process.env.RPP_BOX_DROP_PERCENT) || 30,

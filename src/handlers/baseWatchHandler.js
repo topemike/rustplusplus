@@ -21,7 +21,8 @@
 /*
  *  Base watch, based on Storage Monitors:
  *  - Tool Cupboard upkeep: warns when the protection time drops below configured thresholds
- *    (e.g. 24h, 6h, 1h), once per threshold until upkeep is refilled.
+ *    (3h and 1h by default), once per threshold until upkeep is refilled, saying which material
+ *    runs out first and how much to add (learned by util/upkeepRates.js).
  *  - Watched containers (new WATCH button): warns when many items disappear at once,
  *    by default only while the whole team is offline (a teammate looting is not an alert).
  */
@@ -31,6 +32,7 @@ const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const Timer = require('../util/timer');
+const UpkeepRates = require('../util/upkeepRates.js');
 
 /* Several updates in a short time are merged into one alert */
 const ITEM_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
@@ -118,11 +120,14 @@ async function onStorageUpdate(client, rustplus, entityId, prevItems, payload, n
 
     /* Upkeep */
     if (payload.capacity === Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY) {
-        const before = entity.upkeepWarnedHours;
+        /* Learn what the base costs per material (only while the whole team is offline) */
+        UpkeepRates.observe(entity, payload.items, isWholeTeamOffline(rustplus), nowMs);
         const crossed = checkUpkeep(entity, payload.protectionExpiry, nowMs);
-        if (before !== entity.upkeepWarnedHours) client.setInstance(guildId, instance);
+        client.setInstance(guildId, instance);
 
         if (crossed !== null) {
+            const advice = UpkeepRates.shortAdvice(client, guildId,
+                UpkeepRates.breakdown(entity, payload.items, payload.protectionExpiry, nowMs));
             const left = Timer.secondsToFullScale((payload.protectionExpiry * 1000 - nowMs) / 1000);
             await sendAlert(client, guildId,
                 client.intlGet(guildId, 'upkeepLowTitle', { name: entity.name, time: left }),
@@ -130,10 +135,11 @@ async function onStorageUpdate(client, rustplus, entityId, prevItems, payload, n
                     name: entity.name,
                     date: `<t:${payload.protectionExpiry}:F>`,
                     location: entity.location || '-'
-                }),
+                }) + (advice ? `\n\n${advice}` : ''),
                 Constants.COLOR_INACTIVE, entity.everyone);
             if (entity.inGame) {
-                rustplus.sendInGameMessage(client.intlGet(guildId, 'upkeepLowInGame', { name: entity.name, time: left }));
+                rustplus.sendInGameMessage(client.intlGet(guildId, 'upkeepLowInGame', { name: entity.name, time: left }) +
+                    (advice ? ` ${advice}` : ''));
             }
         }
     }
