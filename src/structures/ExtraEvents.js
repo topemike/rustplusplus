@@ -25,7 +25,7 @@
  *  - Locked crates (Crate markers): where they appear (Chinook drop, Cargo Ship...)
  *    and when they disappear (looted or despawned).
  *  - Unknown marker types are logged once, to discover new content (e.g. Deep Sea).
- *  - Patrol Helicopter / Cargo Ship near the team base (set in-game with !base).
+ *  - Patrol Helicopter near the team base (set in-game with !base).
  */
 
 const Constants = require('../util/constants.js');
@@ -54,7 +54,7 @@ const CARGO_SHIP_CRATE_DISTANCE = 150;
 const OIL_RIG_CRATE_DISTANCE = 150;
 /* A crate appearing while a Chinook is on the map (or just left) was dropped by it. */
 const CHINOOK_RECENT_MS = 3 * MINUTE_MS;
-/* Warn when the Patrol Helicopter / Cargo Ship comes this close to the base (in grids), and
+/* Warn when the Patrol Helicopter comes this close to the base (in grids), and
    again when it moves away past the leave distance (a margin, so it does not flap). */
 const NEAR_BASE_GRIDS = 3;
 const LEAVE_BASE_GRIDS = 3.5;
@@ -304,42 +304,36 @@ class ExtraEvents {
             return;
         }
 
-        const tracked = markers.filter(m => m.type === TYPE_PATROL_HELICOPTER || m.type === TYPE_CARGO_SHIP);
-        const keys = new Set(tracked.map(m => `${m.type}:${m.id}`));
+        const helis = markers.filter(m => m.type === TYPE_PATROL_HELICOPTER);
+        const keys = new Set(helis.map(m => `${m.id}`));
         for (const key of Object.keys(this.nearBase)) {
             if (!keys.has(key)) delete this.nearBase[key];
         }
 
-        for (const marker of tracked) {
-            const key = `${marker.type}:${marker.id}`;
+        for (const marker of helis) {
+            const key = `${marker.id}`;
             const grids = Map.getDistance(marker.x, marker.y, base.x, base.y) / Map.gridDiameter;
             const state = this.nearBase[key] || (this.nearBase[key] = { near: false, lastGrids: null });
             const approaching = state.lastGrids !== null && grids < state.lastGrids;
-            const isHeli = marker.type === TYPE_PATROL_HELICOPTER;
 
             if (!state.near && grids <= NEAR_BASE_GRIDS) {
                 state.near = true;
-                const phrase = (isHeli ? 'heliNearBase' : 'cargoNearBase') + (approaching ? 'Approaching' : '');
                 this.rustplus.sendEvent(
-                    isHeli ? this.rustplus.notificationSettings.heliNearBaseSetting :
-                        this.rustplus.notificationSettings.cargoNearBaseSetting,
-                    this.client.intlGet(this.rustplus.guildId, phrase, {
+                    this.rustplus.notificationSettings.heliNearBaseSetting,
+                    this.client.intlGet(this.rustplus.guildId, approaching ? 'heliNearBaseApproaching' : 'heliNearBase', {
                         distance: this.formatGrids(grids),
                         location: this.getPos(marker).string
                     }),
-                    isHeli ? 'heli' : 'cargo',
-                    isHeli ? Constants.COLOR_PATROL_HELICOPTER_NEAR_BASE : Constants.COLOR_CARGO_SHIP_NEAR_BASE);
+                    'heli',
+                    Constants.COLOR_PATROL_HELICOPTER_NEAR_BASE);
             }
             else if (state.near && grids > LEAVE_BASE_GRIDS) {
                 state.near = false;
                 this.rustplus.sendEvent(
-                    isHeli ? this.rustplus.notificationSettings.heliNearBaseSetting :
-                        this.rustplus.notificationSettings.cargoNearBaseSetting,
-                    this.client.intlGet(this.rustplus.guildId, isHeli ? 'heliLeftBase' : 'cargoLeftBase', {
-                        location: this.getPos(marker).string
-                    }),
-                    isHeli ? 'heli' : 'cargo',
-                    isHeli ? Constants.COLOR_PATROL_HELICOPTER_LEFT_BASE : Constants.COLOR_CARGO_SHIP_LEFT_BASE);
+                    this.rustplus.notificationSettings.heliNearBaseSetting,
+                    this.client.intlGet(this.rustplus.guildId, 'heliLeftBase', { location: this.getPos(marker).string }),
+                    'heli',
+                    Constants.COLOR_PATROL_HELICOPTER_LEFT_BASE);
             }
             state.lastGrids = grids;
         }

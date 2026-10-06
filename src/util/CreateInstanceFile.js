@@ -101,6 +101,10 @@ module.exports = (client, guild) => {
         else {
             const notificationSettings = client.readNotificationSettingsTemplate();
 
+            /* Settings that no longer exist are removed */
+            for (const key of Object.keys(instance.notificationSettings)) {
+                if (!notificationSettings.hasOwnProperty(key)) delete instance.notificationSettings[key];
+            }
             for (const [key, value] of Object.entries(notificationSettings)) {
                 if (!instance.notificationSettings.hasOwnProperty(key)) {
                     instance.notificationSettings[key] = value;
