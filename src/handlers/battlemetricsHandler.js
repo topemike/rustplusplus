@@ -86,9 +86,11 @@ module.exports = {
                             await module.exports.trackerNewNameDetected(client, guildId, trackerId, battlemetricsId,
                                 player.name, name);
 
+                            /* Keep the BattleMetrics id found when the player was added unless the new
+                               name matches someone online right now */
                             const newPlayerId = Object.keys(bmInstance.players)
                                 .find(e => bmInstance.players[e]['name'] === name);
-                            player.playerId = newPlayerId ? newPlayerId : null;
+                            if (newPlayerId) player.playerId = newPlayerId;
                             player.name = name;
                         }
                     }
