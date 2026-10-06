@@ -211,28 +211,6 @@ async function purgeOtherServers(client, guildId, keepServerId) {
     return removed;
 }
 
-/* Message with the cleanup button for dead Smart Devices of a server, or null when it has none */
-function getWipeCleanupMessage(client, guildId, serverId) {
-    const instance = client.getInstance(guildId);
-    const server = instance.serverList[serverId];
-    if (!server) return null;
-    const unreachable = countUnreachable(server);
-    if (unreachable.switches + unreachable.alarms + unreachable.storageMonitors === 0) return null;
-    return {
-        embeds: [DiscordEmbeds.getEmbed({
-            color: Constants.COLOR_DEFAULT,
-            title: client.intlGet(guildId, 'wipeCleanupTitle'),
-            description: client.intlGet(guildId, 'wipeCleanupDesc', unreachable),
-            footer: { text: server.title }
-        })],
-        components: [new Discord.ActionRowBuilder().addComponents(
-            new Discord.ButtonBuilder()
-                .setCustomId(`WipeCleanup${JSON.stringify({ serverId: serverId })}`)
-                .setLabel(client.intlGet(guildId, 'wipeCleanupCap'))
-                .setStyle(Discord.ButtonStyle.Danger))]
-    };
-}
-
 /* Message with the button that deletes ALL game data (every server, including the active one) */
 function getPurgeAllMessage(client, guildId) {
     const instance = client.getInstance(guildId);
@@ -283,7 +261,6 @@ async function purgeEverything(client, guildId) {
 }
 
 module.exports = {
-    getWipeCleanupMessage: getWipeCleanupMessage,
     getPurgeAllMessage: getPurgeAllMessage,
     purgeEverything: purgeEverything,
     getServerChangeMessage: getServerChangeMessage,

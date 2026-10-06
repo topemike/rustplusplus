@@ -237,7 +237,6 @@
     "commandsCraftQuantityDesc": "The quantity of items to craft.",
     "commandsCredentialsAddDesc": "Agregar Credenciales FCM.",
     "commandsCleanupDesc": "Borra datos antiguos del bot (pide confirmación).",
-    "commandsCleanupDevicesDesc": "Dispositivos del server actual que ya no responden (tras un wipe).",
     "commandsCleanupOthersDesc": "Todo lo de los servers que no son el actual.",
     "commandsCleanupAllDesc": "Todo lo de todos los servers, también el actual (empezar de cero).",
     "cleanupNothing": "No hay nada que borrar.",

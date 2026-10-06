@@ -20,7 +20,6 @@
 
 /*
  *  /limpieza (admins): shows a confirmation button, nothing is deleted until it is pressed.
- *  - dispositivos: Smart Devices of the active server that no longer respond (after a wipe).
  *  - otros_servers: everything about servers other than the active one.
  *  - todo: everything about every server (disconnects the bot). Settings, credentials and the
  *    market watch list are kept.
@@ -40,7 +39,6 @@ module.exports = {
 		return new Builder.SlashCommandBuilder()
 			.setName('limpieza')
 			.setDescription(client.intlGet(guildId, 'commandsCleanupDesc'))
-			.addSubcommand(s => s.setName('dispositivos').setDescription(client.intlGet(guildId, 'commandsCleanupDevicesDesc')))
 			.addSubcommand(s => s.setName('otros_servers').setDescription(client.intlGet(guildId, 'commandsCleanupOthersDesc')))
 			.addSubcommand(s => s.setName('todo').setDescription(client.intlGet(guildId, 'commandsCleanupAllDesc')));
 	},
@@ -68,10 +66,7 @@ module.exports = {
 
 		const active = instance.activeServer;
 		let content = null;
-		if (subcommand === 'dispositivos') {
-			content = active !== null ? ServerLifecycle.getWipeCleanupMessage(client, guildId, active) : null;
-		}
-		else if (subcommand === 'otros_servers') {
+		if (subcommand === 'otros_servers') {
 			content = ServerLifecycle.getServerChangeMessage(client, guildId, active);
 		}
 		else {

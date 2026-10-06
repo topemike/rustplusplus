@@ -237,7 +237,6 @@
     "commandsCraftQuantityDesc": "The quantity of items to craft.",
     "commandsCredentialsAddDesc": "Add FCM Credentials.",
     "commandsCleanupDesc": "Delete old bot data (asks for confirmation).",
-    "commandsCleanupDevicesDesc": "Smart Devices of the current server that no longer respond (after a wipe).",
     "commandsCleanupOthersDesc": "Everything about servers other than the current one.",
     "commandsCleanupAllDesc": "Everything about every server, also the current one (start from zero).",
     "cleanupNothing": "Nothing to delete.",
