@@ -23,8 +23,8 @@
  *  Rust+ does not report the Deep Sea. It stays open a fixed time (about 3 h) and then closed a
  *  RANDOM time (1h30 to 2h30 by default), so only the closing can be predicted exactly:
  *  - Marked open: warnings 10 and 5 minutes before it closes and when it closes.
- *  - Closed: the bot gives the window in which it will reopen and warns when the window starts.
- *    If nobody marks the opening, it reminds once at the end of the window.
+ *  - Closed: the bot gives the window in which it will reopen, warns when the window starts and
+ *    reminds every 30 minutes until the latest time. Then one last reminder to mark it, and silence.
  *  - If the closed time measured two cycles in a row is the same (+-3 min), the server has a fixed
  *    cycle: from then on every opening is predicted too (warnings 10 and 5 minutes before).
  *  - Marks can be given late ("!deepsea open 20" = it opened 20 minutes ago).
@@ -219,9 +219,16 @@ function dueWarnings(ds, now = Date.now()) {
         const key = `${before.opensFrom}-open-0`;
         if (!ds.warned[key]) due.push({ key: key, type: 'openingNow' });
     }
-    if (p !== null && p.phase === 'closed' && !p.fixed && inWindow(p.opensFrom)) {
-        const key = `${p.opensFrom}-from`;
-        if (!ds.warned[key]) due.push({ key: key, type: 'mayOpen', opensTo: p.opensTo });
+    if (p !== null && p.phase === 'closed' && !p.fixed) {
+        /* From the start of the window, a reminder every N minutes until the latest time */
+        const every = Config.deepSea.windowReminderMinutes * MINUTE_MS;
+        for (let at = p.opensFrom, i = 0; at < p.opensTo; at += every, i++) {
+            const key = `${at}-from`;
+            if (inWindow(at) && !ds.warned[key]) {
+                due.push({ key: key, type: i === 0 ? 'mayOpen' : 'mayOpenReminder', opensTo: p.opensTo });
+            }
+            if (every <= 0) break;
+        }
     }
     if (p !== null && p.phase === 'overdue' && inWindow(p.opensTo)) {
         const key = `${p.opensTo}-late`;
@@ -256,7 +263,8 @@ function warningText(client, guildId, w, now = Date.now()) {
         case 'closingNow': return client.intlGet(guildId, 'deepSeaClosingNow');
         case 'opensIn': return client.intlGet(guildId, 'deepSeaOpensIn', { minutes: w.minutes });
         case 'openingNow': return client.intlGet(guildId, 'deepSeaOpeningNow');
-        case 'mayOpen': return client.intlGet(guildId, 'deepSeaMayOpenNow',
+        case 'mayOpen':
+        case 'mayOpenReminder': return client.intlGet(guildId, w.type === 'mayOpen' ? 'deepSeaMayOpenNow' : 'deepSeaMayOpenReminder',
             { to: Timer.secondsToFullScale(Math.max(w.opensTo - now, 0) / 1000, 's') || '0m' });
         default: return client.intlGet(guildId, 'deepSeaOverdueReminder');
     }
@@ -303,7 +311,7 @@ async function tick(client, now = Date.now()) {
             if (!setting) continue;
             for (const w of due) {
                 await rustplus.sendEvent(setting, warningText(client, guildId, w, now), 'deepsea',
-                    ['mayOpen', 'overdue', 'opensIn', 'openingNow'].includes(w.type) ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE);
+                    ['mayOpen', 'mayOpenReminder', 'overdue', 'opensIn', 'openingNow'].includes(w.type) ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE);
             }
         }
         catch (e) {

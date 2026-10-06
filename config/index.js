@@ -79,6 +79,8 @@ module.exports = {
         /* Closed time is random on official servers: 1h30 to 2h30 */
         closedMinMinutes: parseInt(process.env.RPP_DEEPSEA_CLOSED_MIN_MINUTES) || 90,
         closedMaxMinutes: parseInt(process.env.RPP_DEEPSEA_CLOSED_MAX_MINUTES) || 150,
+        /* While it can reopen at any moment: reminder every N minutes until the latest time */
+        windowReminderMinutes: parseInt(process.env.RPP_DEEPSEA_WINDOW_REMINDER_MINUTES) || 30,
         /* Warnings before opening and closing (minutes) */
         warnMinutes: (process.env.RPP_DEEPSEA_WARN_MINUTES || '10,5').split(',')
             .map(m => parseInt(m)).filter(m => m > 0)
