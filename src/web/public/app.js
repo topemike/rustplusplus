@@ -175,9 +175,18 @@
         const deepSea = h('div', { class: 'panel' },
             h('h3', {}, 'Deep Sea'),
             !ds.synced ? h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Sin sincronizar. Cuando abra, escribe !deepsea abierto en el chat del juego.') :
-                [h('p', { class: 'big' }, h('span', { 'data-countdown': ds.nextChangeAt }, duration(ds.nextChangeAt - Date.now(), true))),
-                    h('p', { style: 'margin:0;color:var(--ink-2)' }, ds.isOpen ? `Abierto: cierra a las ${fmtTime.format(ds.nextChangeAt)}` :
-                        `Cerrado: abre a las ${fmtTime.format(ds.nextChangeAt)}`)]);
+                ds.phase === 'open' ?
+                    [h('p', { class: 'big' }, h('span', { 'data-countdown': ds.closesAt }, duration(ds.closesAt - Date.now(), true))),
+                        h('p', { style: 'margin:0;color:var(--ink-2)' }, `Abierto: cierra a las ${fmtTime.format(ds.closesAt)}`)] :
+                ds.phase === 'closed' && ds.opensFrom === ds.opensTo ?
+                    [h('p', { class: 'big' }, h('span', { 'data-countdown': ds.opensFrom }, duration(ds.opensFrom - Date.now(), true))),
+                        h('p', { style: 'margin:0;color:var(--ink-2)' }, `Cerrado: abre a las ${fmtTime.format(ds.opensFrom)} (ciclo fijo)`)] :
+                ds.phase === 'closed' ?
+                    [h('p', { class: 'big' }, `${fmtTime.format(ds.opensFrom)}–${fmtTime.format(ds.opensTo)}`),
+                        h('p', { style: 'margin:0;color:var(--ink-2)' }, Date.now() < ds.opensFrom ?
+                            'Cerrado: vuelve a abrir a una hora aleatoria dentro de esa franja.' :
+                            'Puede abrir en cualquier momento. Marcadlo con !deepsea abierto.')] :
+                    h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Ya debería estar abierto. Cuando lo veáis, escribid !deepsea abierto (o !deepsea abierto 20 si abrió hace 20 min).'));
 
         const counts = Object.entries(data.eventCounts).filter(([k]) => k !== 'vending');
         const last24 = h('div', { class: 'panel' },

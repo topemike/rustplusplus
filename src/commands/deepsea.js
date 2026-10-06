@@ -34,10 +34,22 @@ module.exports = {
 			.setDescription(client.intlGet(guildId, 'commandsDeepSeaDesc'))
 			.addSubcommand(subcommand => subcommand
 				.setName('abierto')
-				.setDescription(client.intlGet(guildId, 'commandsDeepSeaOpenDesc')))
+				.setDescription(client.intlGet(guildId, 'commandsDeepSeaOpenDesc'))
+				.addIntegerOption(option => option
+					.setName('hace')
+					.setDescription(client.intlGet(guildId, 'commandsDeepSeaAgoDesc'))
+					.setRequired(false)
+					.setMinValue(0)
+					.setMaxValue(600)))
 			.addSubcommand(subcommand => subcommand
 				.setName('cerrado')
-				.setDescription(client.intlGet(guildId, 'commandsDeepSeaClosedDesc')))
+				.setDescription(client.intlGet(guildId, 'commandsDeepSeaClosedDesc'))
+				.addIntegerOption(option => option
+					.setName('hace')
+					.setDescription(client.intlGet(guildId, 'commandsDeepSeaAgoDesc'))
+					.setRequired(false)
+					.setMinValue(0)
+					.setMaxValue(600)))
 			.addSubcommand(subcommand => subcommand
 				.setName('estado')
 				.setDescription(client.intlGet(guildId, 'commandsDeepSeaStatusDesc')))
@@ -52,6 +64,11 @@ module.exports = {
 				.addIntegerOption(option => option
 					.setName('cerrado_min')
 					.setDescription(client.intlGet(guildId, 'commandsDeepSeaClosedMinDesc'))
+					.setRequired(false)
+					.setMinValue(5))
+				.addIntegerOption(option => option
+					.setName('cerrado_max')
+					.setDescription(client.intlGet(guildId, 'commandsDeepSeaClosedMaxDesc'))
 					.setRequired(false)
 					.setMinValue(5)))
 			.addSubcommand(subcommand => subcommand
@@ -91,7 +108,8 @@ module.exports = {
 		switch (subcommand) {
 			case 'abierto':
 			case 'cerrado': {
-				await reply(DeepSea.markAndDescribe(client, guildId, instance, server, subcommand === 'abierto'),
+				await reply(DeepSea.markAndDescribe(client, guildId, instance, server, subcommand === 'abierto',
+					Date.now(), interaction.options.getInteger('hace') || 0),
 					subcommand === 'abierto' ? Constants.COLOR_ACTIVE : Constants.COLOR_DEFAULT);
 			} break;
 
@@ -100,22 +118,26 @@ module.exports = {
 				const d = DeepSea.durations(ds);
 				await reply(`${DeepSea.statusText(client, guildId, ds)}\n\n${intl('deepSeaDurations', {
 					open: Timer.secondsToFullScale(d.openMs / 1000, 's'),
-					closed: Timer.secondsToFullScale(d.closedMs / 1000, 's')
+					closedMin: Timer.secondsToFullScale(d.closedMinMs / 1000, 's'),
+					closedMax: Timer.secondsToFullScale(d.closedMaxMs / 1000, 's')
 				})}`);
 			} break;
 
 			case 'tiempos': {
 				const ds = DeepSea.getDeepSea(server);
 				const open = interaction.options.getInteger('abierto_min');
-				const closed = interaction.options.getInteger('cerrado_min');
+				const closedMin = interaction.options.getInteger('cerrado_min');
+				const closedMax = interaction.options.getInteger('cerrado_max');
 				if (open !== null) ds.openMs = open * 60 * 1000;
-				if (closed !== null) ds.closedMs = closed * 60 * 1000;
+				if (closedMin !== null) ds.closedMinMs = closedMin * 60 * 1000;
+				if (closedMax !== null) ds.closedMaxMs = closedMax * 60 * 1000;
 				ds.warned = {};
 				client.setInstance(guildId, instance);
 				const d = DeepSea.durations(ds);
 				await reply(`${intl('deepSeaDurations', {
 					open: Timer.secondsToFullScale(d.openMs / 1000, 's'),
-					closed: Timer.secondsToFullScale(d.closedMs / 1000, 's')
+					closedMin: Timer.secondsToFullScale(d.closedMinMs / 1000, 's'),
+					closedMax: Timer.secondsToFullScale(d.closedMaxMs / 1000, 's')
 				})}\n${DeepSea.statusText(client, guildId, ds)}`);
 			} break;
 
