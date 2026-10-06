@@ -91,7 +91,8 @@ function deepSea(client, guildId) {
     if (!srv || !srv.deepSea) return { synced: false };
     const p = DeepSea.predict(srv.deepSea);
     if (!p) return { synced: false };
-    return { synced: true, isOpen: p.isOpen, nextChangeAt: p.nextChangeAt };
+    return { synced: true, phase: p.phase, isOpen: p.isOpen, closesAt: p.closesAt || null,
+        opensFrom: p.opensFrom || null, opensTo: p.opensTo || null };
 }
 
 function raid(client, guildId) {

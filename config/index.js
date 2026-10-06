@@ -76,7 +76,9 @@ module.exports = {
     deepSea: {
         /* Default Deep Sea cycle (learned per server from the open/closed marks) */
         openMinutes: parseInt(process.env.RPP_DEEPSEA_OPEN_MINUTES) || 180,
-        closedMinutes: parseInt(process.env.RPP_DEEPSEA_CLOSED_MINUTES) || 90,
+        /* Closed time is random on official servers: 1h30 to 2h30 */
+        closedMinMinutes: parseInt(process.env.RPP_DEEPSEA_CLOSED_MIN_MINUTES) || 90,
+        closedMaxMinutes: parseInt(process.env.RPP_DEEPSEA_CLOSED_MAX_MINUTES) || 150,
         /* Warnings before opening and closing (minutes) */
         warnMinutes: (process.env.RPP_DEEPSEA_WARN_MINUTES || '10,5').split(',')
             .map(m => parseInt(m)).filter(m => m > 0)

@@ -20,12 +20,14 @@
 
 /*
  *  Deep Sea timer.
- *  Rust+ does not report the Deep Sea, but it follows a fixed cycle per server (open for a while,
- *  closed for a while). The team marks once when it opens (or closes) and the bot predicts the
- *  next openings/closings, warning 10 and 5 minutes before and at the moment.
- *  - Durations default to 3h open / 90 min closed (editable) and are learned from the marks:
- *    marking "open" and later "closed" measures the open time of that server, and vice versa.
- *  - A wipe clears the timer (the Deep Sea does not open right after a wipe).
+ *  Rust+ does not report the Deep Sea. It stays open a fixed time (about 3 h) and then closed a
+ *  RANDOM time (1h30 to 2h30 by default), so only the closing can be predicted exactly:
+ *  - Marked open: warnings 10 and 5 minutes before it closes and when it closes.
+ *  - Closed: the bot gives the window in which it will reopen and warns when the window starts.
+ *    If nobody marks the opening, it reminds once at the end of the window.
+ *  - Marks can be given late ("!deepsea open 20" = it opened 20 minutes ago).
+ *  - The open time and the closed range are learned from the marks.
+ *  - A wipe clears the timer.
  */
 
 const Config = require('../../config');
@@ -34,15 +36,20 @@ const Timer = require('../util/timer');
 
 const MINUTE_MS = 60 * 1000;
 const TICK_MS = 15 * 1000;
+const MAX_LATE_MINUTES = 600;
 
 /* Measured durations outside these limits are ignored (forgotten mark, server restart...) */
 const OPEN_LIMITS_MS = [20 * MINUTE_MS, 12 * 60 * MINUTE_MS];
 const CLOSED_LIMITS_MS = [5 * MINUTE_MS, 12 * 60 * MINUTE_MS];
 
+const OPEN_WORDS = ['open', 'opened', 'abierto', 'abre', 'abrio', 'abrió'];
+const CLOSED_WORDS = ['closed', 'close', 'cerrado', 'cierra', 'cerro', 'cerró'];
+
 function defaults() {
     return {
         openMs: Config.deepSea.openMinutes * MINUTE_MS,
-        closedMs: Config.deepSea.closedMinutes * MINUTE_MS
+        closedMinMs: Config.deepSea.closedMinMinutes * MINUTE_MS,
+        closedMaxMs: Config.deepSea.closedMaxMinutes * MINUTE_MS
     };
 }
 
@@ -50,7 +57,7 @@ function getDeepSea(server) {
     if (!server.deepSea) {
         server.deepSea = {
             lastOpenedAt: null, lastClosedAt: null,
-            openMs: null, closedMs: null,          /* null = default */
+            openMs: null, closedMinMs: null, closedMaxMs: null,   /* null = default */
             warned: {}
         };
     }
@@ -60,62 +67,71 @@ function getDeepSea(server) {
 
 function durations(ds) {
     const d = defaults();
-    return { openMs: ds.openMs || d.openMs, closedMs: ds.closedMs || d.closedMs };
+    const closedMinMs = ds.closedMinMs || d.closedMinMs;
+    const closedMaxMs = Math.max(ds.closedMaxMs || d.closedMaxMs, closedMinMs);
+    return { openMs: ds.openMs || d.openMs, closedMinMs: closedMinMs, closedMaxMs: closedMaxMs };
 }
 
 /**
- *  Current phase and next transition, from the most recent mark.
- *  @return {Object|null} { isOpen, nextChangeAt, nextIsOpening } or null when not synchronized.
+ *  Current phase from the most recent mark.
+ *  @return {Object|null} null when never marked, otherwise one of:
+ *    { phase: 'open', isOpen: true, closesAt, nextChangeAt }
+ *    { phase: 'closed', isOpen: false, opensFrom, opensTo, nextChangeAt (= opensFrom) }
+ *    { phase: 'overdue', isOpen: null, opensTo }   (should have reopened, nobody marked it)
  */
 function predict(ds, now = Date.now()) {
-    const { openMs, closedMs } = durations(ds);
-    const cycle = openMs + closedMs;
+    const { openMs, closedMinMs, closedMaxMs } = durations(ds);
+    let closedAt = null;
 
-    let anchorOpen = null;   /* a moment when the Deep Sea opened */
-    if (ds.lastOpenedAt !== null && (ds.lastClosedAt === null || ds.lastOpenedAt >= ds.lastClosedAt)) {
-        anchorOpen = ds.lastOpenedAt;
+    if (ds.lastOpenedAt !== null && ds.lastOpenedAt !== undefined &&
+        (ds.lastClosedAt === null || ds.lastClosedAt === undefined || ds.lastOpenedAt >= ds.lastClosedAt)) {
+        const closesAt = ds.lastOpenedAt + openMs;
+        if (now < closesAt) return { phase: 'open', isOpen: true, closesAt: closesAt, nextChangeAt: closesAt };
+        closedAt = closesAt;
     }
-    else if (ds.lastClosedAt !== null) {
-        anchorOpen = ds.lastClosedAt - openMs;
+    else if (ds.lastClosedAt !== null && ds.lastClosedAt !== undefined) {
+        closedAt = ds.lastClosedAt;
     }
-    if (anchorOpen === null) return null;
+    if (closedAt === null) return null;
 
-    const elapsed = ((now - anchorOpen) % cycle + cycle) % cycle;
-    const cycleStart = now - elapsed;
-    if (elapsed < openMs) {
-        return { isOpen: true, nextChangeAt: cycleStart + openMs, nextIsOpening: false };
+    const opensFrom = closedAt + closedMinMs, opensTo = closedAt + closedMaxMs;
+    if (now <= opensTo) {
+        return { phase: 'closed', isOpen: false, opensFrom: opensFrom, opensTo: opensTo, nextChangeAt: opensFrom };
     }
-    return { isOpen: false, nextChangeAt: cycleStart + cycle, nextIsOpening: true };
+    return { phase: 'overdue', isOpen: null, opensTo: opensTo };
 }
 
 /**
- *  Records that the Deep Sea just opened or closed, learning the durations.
+ *  Records that the Deep Sea opened or closed at `at` (now, or some minutes ago), learning durations.
  *  @return {Object} { learned: 'open'|'closed'|null, ms }
  */
-function mark(server, opened, now = Date.now()) {
+function mark(server, opened, at = Date.now()) {
     const ds = getDeepSea(server);
     let learned = null, ms = null;
 
     if (opened) {
         if (ds.lastClosedAt !== null && (ds.lastOpenedAt === null || ds.lastClosedAt > ds.lastOpenedAt)) {
-            const diff = now - ds.lastClosedAt;
+            const diff = at - ds.lastClosedAt;
             if (diff >= CLOSED_LIMITS_MS[0] && diff <= CLOSED_LIMITS_MS[1]) {
-                ds.closedMs = diff; learned = 'closed'; ms = diff;
+                const d = durations(ds);
+                ds.closedMinMs = Math.min(d.closedMinMs, diff);
+                ds.closedMaxMs = Math.max(d.closedMaxMs, diff);
+                learned = 'closed'; ms = diff;
             }
         }
-        ds.lastOpenedAt = now;
+        ds.lastOpenedAt = at;
     }
     else {
         if (ds.lastOpenedAt !== null && (ds.lastClosedAt === null || ds.lastOpenedAt > ds.lastClosedAt)) {
-            const diff = now - ds.lastOpenedAt;
+            const diff = at - ds.lastOpenedAt;
             if (diff >= OPEN_LIMITS_MS[0] && diff <= OPEN_LIMITS_MS[1]) {
                 ds.openMs = diff; learned = 'open'; ms = diff;
             }
         }
-        ds.lastClosedAt = now;
+        ds.lastClosedAt = at;
     }
-    /* The change that was just marked must not be announced again */
-    ds.warned = { [`${now}-0`]: true };
+    /* Warnings only fire within a minute of their moment, so nothing old is re-sent */
+    ds.warned = {};
     return { learned: learned, ms: ms };
 }
 
@@ -124,40 +140,83 @@ function reset(server) {
 }
 
 /**
- *  Warnings due now: 10 and 5 minutes before the next change, and at the change.
- *  @return {Array} [{ key, minutes (10|5|0), opening }]
+ *  Warnings due now.
+ *  @return {Array} [{ key, type: 'closesIn'|'closingNow'|'mayOpen'|'overdue', minutes, opensTo }]
  */
 function dueWarnings(ds, now = Date.now()) {
-    const p = predict(ds, now);
-    if (p === null) return [];
     const due = [];
-    for (const minutes of Config.deepSea.warnMinutes) {
-        const at = p.nextChangeAt - minutes * MINUTE_MS;
-        const key = `${p.nextChangeAt}-${minutes}`;
-        /* Only fire within one minute of the moment, so old warnings are not sent late */
-        if (now >= at && now - at < MINUTE_MS && !ds.warned[key]) due.push({ key: key, minutes: minutes, opening: p.nextIsOpening });
+    const inWindow = (at) => now >= at && now - at < MINUTE_MS;
+    const p = predict(ds, now);
+    const before = predict(ds, now - MINUTE_MS);
+
+    if (p !== null && p.phase === 'open') {
+        for (const minutes of Config.deepSea.warnMinutes) {
+            const key = `${p.closesAt}-${minutes}`;
+            if (inWindow(p.closesAt - minutes * MINUTE_MS) && !ds.warned[key]) {
+                due.push({ key: key, type: 'closesIn', minutes: minutes });
+            }
+        }
     }
-    /* The change itself may have just passed (we are now in the next phase) */
-    const justChanged = predict(ds, now - MINUTE_MS);
-    if (justChanged && justChanged.nextChangeAt <= now && justChanged.nextChangeAt > now - MINUTE_MS) {
-        const key = `${justChanged.nextChangeAt}-0`;
-        if (!ds.warned[key]) due.push({ key: key, minutes: 0, opening: justChanged.nextIsOpening });
+    /* It has just closed (by the timer) */
+    if (before !== null && before.phase === 'open' && inWindow(before.closesAt)) {
+        const key = `${before.closesAt}-0`;
+        if (!ds.warned[key]) due.push({ key: key, type: 'closingNow' });
+    }
+    if (p !== null && p.phase === 'closed' && inWindow(p.opensFrom)) {
+        const key = `${p.opensFrom}-from`;
+        if (!ds.warned[key]) due.push({ key: key, type: 'mayOpen', opensTo: p.opensTo });
+    }
+    if (p !== null && p.phase === 'overdue' && inWindow(p.opensTo)) {
+        const key = `${p.opensTo}-late`;
+        if (!ds.warned[key]) due.push({ key: key, type: 'overdue' });
     }
     return due;
 }
 
 function statusText(client, guildId, ds, now = Date.now(), short = false) {
     const p = predict(ds, now);
+    const fmt = (ms) => Timer.secondsToFullScale(Math.max(ms, 0) / 1000, short ? 's' : '') || '0m';
     if (p === null) return client.intlGet(guildId, short ? 'deepSeaNotSyncedShort' : 'deepSeaNotSynced');
-    const left = Timer.secondsToFullScale((p.nextChangeAt - now) / 1000, short ? 's' : '');
-    const id = p.isOpen ? (short ? 'deepSeaOpenShort' : 'deepSeaOpenStatus') :
-        (short ? 'deepSeaClosedShort' : 'deepSeaClosedStatus');
-    return client.intlGet(guildId, id, { time: left || '0m' });
+    if (p.phase === 'open') {
+        return client.intlGet(guildId, short ? 'deepSeaOpenShort' : 'deepSeaOpenStatus', { time: fmt(p.closesAt - now) });
+    }
+    if (p.phase === 'closed') {
+        if (now < p.opensFrom) {
+            return client.intlGet(guildId, short ? 'deepSeaClosedWindowShort' : 'deepSeaClosedWindow',
+                { from: fmt(p.opensFrom - now), to: fmt(p.opensTo - now) });
+        }
+        return client.intlGet(guildId, short ? 'deepSeaMayOpenShort' : 'deepSeaMayOpenStatus', { to: fmt(p.opensTo - now) });
+    }
+    return client.intlGet(guildId, short ? 'deepSeaOverdueShort' : 'deepSeaOverdueStatus');
 }
 
-function warningText(client, guildId, w) {
-    if (w.minutes === 0) return client.intlGet(guildId, w.opening ? 'deepSeaOpeningNow' : 'deepSeaClosingNow');
-    return client.intlGet(guildId, w.opening ? 'deepSeaOpensIn' : 'deepSeaClosesIn', { minutes: w.minutes });
+function warningText(client, guildId, w, now = Date.now()) {
+    switch (w.type) {
+        case 'closesIn': return client.intlGet(guildId, 'deepSeaClosesIn', { minutes: w.minutes });
+        case 'closingNow': return client.intlGet(guildId, 'deepSeaClosingNow');
+        case 'mayOpen': return client.intlGet(guildId, 'deepSeaMayOpenNow',
+            { to: Timer.secondsToFullScale(Math.max(w.opensTo - now, 0) / 1000, 's') || '0m' });
+        default: return client.intlGet(guildId, 'deepSeaOverdueReminder');
+    }
+}
+
+/**
+ *  Parses "open", "abierto hace 20", "open 20m", "cerrado 1h" -> { opened, lateMinutes } or null.
+ */
+function parseMark(arg) {
+    const words = arg.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return null;
+    let opened = null;
+    if (OPEN_WORDS.includes(words[0])) opened = true;
+    else if (CLOSED_WORDS.includes(words[0])) opened = false;
+    if (opened === null) return null;
+
+    const rest = words.slice(1).filter(w => !['hace', 'ago'].includes(w)).join(' ');
+    const hours = rest.match(/(\d+)\s*h/);
+    const minutes = (hours ? rest.replace(hours[0], '') : rest).match(/(\d+)/);
+    let lateMinutes = (hours ? parseInt(hours[1]) * 60 : 0) + (minutes ? parseInt(minutes[1]) : 0);
+    if (lateMinutes > MAX_LATE_MINUTES) lateMinutes = MAX_LATE_MINUTES;
+    return { opened: opened, lateMinutes: lateMinutes };
 }
 
 async function tick(client, now = Date.now()) {
@@ -181,8 +240,8 @@ async function tick(client, now = Date.now()) {
             const setting = rustplus.notificationSettings.deepSeaSetting;
             if (!setting) continue;
             for (const w of due) {
-                await rustplus.sendEvent(setting, warningText(client, guildId, w), 'deepsea',
-                    w.opening ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE);
+                await rustplus.sendEvent(setting, warningText(client, guildId, w, now), 'deepsea',
+                    w.type === 'mayOpen' || w.type === 'overdue' ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE);
             }
         }
         catch (e) {
@@ -192,7 +251,7 @@ async function tick(client, now = Date.now()) {
 }
 
 /**
- *  !deepsea [open|abierto|closed|cerrado] for the in-game chat and the Discord commands channel.
+ *  !deepsea [open|abierto|closed|cerrado] [minutes ago] for the in-game chat and Discord commands.
  *  @return {string|null}
  */
 function command(rustplus, client, text, now = Date.now()) {
@@ -208,19 +267,18 @@ function command(rustplus, client, text, now = Date.now()) {
     const server = instance.serverList[rustplus.serverId];
     if (!server) return null;
 
-    if (['open', 'opened', 'abierto', 'abre', 'abrio'].includes(arg)) {
-        return markAndDescribe(client, guildId, instance, server, true, now);
-    }
-    if (['closed', 'close', 'cerrado', 'cierra', 'cerro'].includes(arg)) {
-        return markAndDescribe(client, guildId, instance, server, false, now);
-    }
+    const parsed = parseMark(arg);
+    if (parsed) return markAndDescribe(client, guildId, instance, server, parsed.opened, now, parsed.lateMinutes);
     return statusText(client, guildId, getDeepSea(server), now);
 }
 
-function markAndDescribe(client, guildId, instance, server, opened, now = Date.now()) {
-    const result = mark(server, opened, now);
+function markAndDescribe(client, guildId, instance, server, opened, now = Date.now(), lateMinutes = 0) {
+    const result = mark(server, opened, now - lateMinutes * MINUTE_MS);
     client.setInstance(guildId, instance);
     let text = client.intlGet(guildId, opened ? 'deepSeaMarkedOpen' : 'deepSeaMarkedClosed');
+    if (lateMinutes > 0) {
+        text += ' ' + client.intlGet(guildId, 'deepSeaMarkedAgo', { time: Timer.secondsToFullScale(lateMinutes * 60, 's') });
+    }
     if (result.learned) {
         text += ' ' + client.intlGet(guildId, result.learned === 'open' ? 'deepSeaLearnedOpen' : 'deepSeaLearnedClosed',
             { time: Timer.secondsToFullScale(result.ms / 1000, 's') });
@@ -237,6 +295,7 @@ module.exports = {
     statusText: statusText,
     command: command,
     markAndDescribe: markAndDescribe,
+    parseMark: parseMark,
     getDeepSea: getDeepSea,
     tick: tick,
 
