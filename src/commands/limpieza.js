@@ -26,6 +26,7 @@
  */
 
 const Builder = require('@discordjs/builders');
+const Discord = require('discord.js');
 
 const Config = require('../../config');
 const Constants = require('../util/constants.js');
@@ -39,6 +40,8 @@ module.exports = {
 		return new Builder.SlashCommandBuilder()
 			.setName('limpieza')
 			.setDescription(client.intlGet(guildId, 'commandsCleanupDesc'))
+			/* Only shown to members with the Administrator permission */
+			.setDefaultMemberPermissions(Discord.PermissionFlagsBits.Administrator)
 			.addSubcommand(s => s.setName('server').setDescription(client.intlGet(guildId, 'commandsCleanupOthersDesc')))
 			.addSubcommand(s => s.setName('todo').setDescription(client.intlGet(guildId, 'commandsCleanupAllDesc')));
 	},
