@@ -111,7 +111,7 @@ const EVENT_KINDS = {
     cargoShipDetectedSetting: 'cargo', cargoShipLeftSetting: 'cargo', cargoShipEgressSetting: 'cargo',
     cargoShipDockingAtHarborSetting: 'cargo',
     patrolHelicopterDetectedSetting: 'heli', patrolHelicopterLeftSetting: 'heli',
-    patrolHelicopterDestroyedSetting: 'heli', heliNearBaseSetting: 'heli', cargoNearBaseSetting: 'cargo',
+    patrolHelicopterDestroyedSetting: 'heli', heliNearBaseSetting: 'heli',
     bradleyApcDestroyedSetting: 'bradley', bradleyApcRespawnSetting: 'bradley',
     lockedCrateOilRigUnlockedSetting: 'crate', lockedCrateDroppedSetting: 'crate', lockedCrateGoneSetting: 'crate',
     heavyScientistCalledSetting: 'oilrig', chinook47DetectedSetting: 'chinook',
