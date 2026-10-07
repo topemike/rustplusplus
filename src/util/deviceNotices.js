@@ -46,15 +46,18 @@ function answeredFound(response) {
     return !!response && typeof response === 'object' && !response.error && !!response.entityInfo;
 }
 
-/* Errors from Rust+ that mean "this device is not there for us" (gone, or no longer authorised) */
-const MISSING_ERRORS = ['not_found', 'access_denied'];
+/* Errors from Rust+ that mean "this device no longer exists" */
+const MISSING_ERRORS = ['not_found'];
 /* Errors that say nothing about the device (busy server, our own request limit) */
 const TRANSIENT_ERRORS = ['rate_limit', 'server_error'];
+/* The device exists but the connected account cannot use it (e.g. not authorised on the TC):
+   not a "gone" notice, but worth a line in the log */
+const NO_ACCESS_ERRORS = ['access_denied'];
 const loggedErrors = new Set();
 
 /**
- *  What the server said about a device: 'found', 'missing' or 'unknown' (timeout, no answer, busy
- *  server). An error text not in the lists above is logged once, so a change in Rust+ is noticed
+ *  What the server said about a device: 'found', 'missing' (it no longer exists) or 'unknown'
+ *  (timeout, no answer, busy server, no access). An error text not in the lists above is logged once, so a change in Rust+ is noticed
  *  instead of silently never sending a notice.
  */
 function classify(response, client = null) {
@@ -62,10 +65,15 @@ function classify(response, client = null) {
     const error = response && typeof response === 'object' && typeof response.error === 'string' ? response.error : null;
     if (error === null) return 'unknown';
     if (MISSING_ERRORS.includes(error)) return 'missing';
-    if (!TRANSIENT_ERRORS.includes(error) && !loggedErrors.has(error)) {
+    /* Our own token limit: getEntityInfoAsync() returns its translated text as the error */
+    const ownLimit = client && typeof client.intlGet === 'function' && error === client.intlGet(null, 'tokensDidNotReplenish');
+    if (!TRANSIENT_ERRORS.includes(error) && !ownLimit && !loggedErrors.has(error)) {
         loggedErrors.add(error);
         if (client && typeof client.log === 'function') {
-            client.log(client.intlGet(null, 'warningCap'), `Device check: unexpected Rust+ answer "${error}"`, 'warn');
+            const text = NO_ACCESS_ERRORS.includes(error) ?
+                'Device check: the connected account has no access to a device (access_denied); is it authorised?' :
+                `Device check: unexpected Rust+ answer "${error}"`;
+            client.log(client.intlGet(null, 'warningCap'), text, 'warn');
         }
     }
     return 'unknown';

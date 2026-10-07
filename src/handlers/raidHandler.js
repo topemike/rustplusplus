@@ -169,6 +169,8 @@ function getIncidentEmbed(client, guildId, incident, now = Date.now()) {
     }
 
     description += `\n${client.intlGet(guildId, 'raidAlarms', { alarms: alarms })}`;
+    /* Last text sent by the raid-alarm plugin (e.g. where the attack is) */
+    if (incident.pluginNote) description += `\n> ${incident.pluginNote}`;
     if (incident.acknowledgedBy) {
         description += `\n${client.intlGet(guildId, 'raidAcknowledgedBy', { user: `<@${incident.acknowledgedBy}>` })}`;
     }
@@ -327,6 +329,7 @@ async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isS
     if (!incident.alarms[entityId]) incident.alarms[entityId] = { name: alarm.name, count: 0 };
     incident.alarms[entityId].name = alarm.name;
     incident.alarms[entityId].count++;
+    if (!isSmartAlarm && alarm.message) incident.pluginNote = `${alarm.message}`.slice(0, 300);
     incident.dirty = true;
 
     /* The alert first (with the mention), the actions after: they can take a few seconds */

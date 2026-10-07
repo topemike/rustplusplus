@@ -1273,6 +1273,9 @@ module.exports = async (client, interaction) => {
             return;
         }
 
+        /* The button, to give it back if nothing could be checked (read before the update below) */
+        const originalComponents = interaction.message ? interaction.message.components : [];
+
         /* Answer first: Discord gives only 3 seconds and the cleanup can take longer */
         await client.interactionUpdate(interaction, {
             embeds: [DiscordEmbeds.getEmbed({
@@ -1297,7 +1300,7 @@ module.exports = async (client, interaction) => {
                     color: Constants.COLOR_INACTIVE,
                     description: client.intlGet(guildId, 'wipeCleanupNotConnected')
                 })],
-                components: interaction.message ? interaction.message.components : []
+                components: originalComponents
             });
             return;
         }

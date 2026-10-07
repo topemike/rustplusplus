@@ -22,7 +22,7 @@ module.exports = {
     general: {
         language: process.env.RPP_LANGUAGE || 'en',
         pollingIntervalMs: process.env.RPP_POLLING_INTERVAL || 10000,
-        showCallStackError: process.env.RPP_LOG_CALL_STACK === 'true',
+        showCallStackError: ['true', '1', 'yes'].includes(`${process.env.RPP_LOG_CALL_STACK || ''}`.trim().toLowerCase()),
         reconnectIntervalMs: process.env.RPP_RECONNECT_INTERVAL || 15000,
         /* Time zone used for tracker schedules (IANA name, e.g. Europe/Madrid) */
         timezone: process.env.RPP_TIMEZONE || 'Europe/Madrid',
@@ -31,7 +31,7 @@ module.exports = {
         username: process.env.RPP_DISCORD_USERNAME || 'rustplusplus',
         clientId: process.env.RPP_DISCORD_CLIENT_ID || '',
         token: process.env.RPP_DISCORD_TOKEN || '',
-        needAdminPrivileges: process.env.RPP_NEED_ADMIN_PRIVILEGES !== 'false', /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
+        needAdminPrivileges: !['false', '0', 'no'].includes(`${process.env.RPP_NEED_ADMIN_PRIVILEGES || ''}`.trim().toLowerCase()), /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
     },
     battlemetrics: {
         token: process.env.RPP_BATTLEMETRICS_TOKEN || ''
