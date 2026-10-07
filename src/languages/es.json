@@ -834,7 +834,6 @@
     "summaryEvent_cargo": "🚢 Cargo ×{count}",
     "summaryEvent_chinook": "Chinook ×{count}",
     "summaryEvent_crates": "📦 Crates bloqueados ×{count}",
-    "summaryEvent_deepSea": "🌊 Deep Sea ×{count}",
     "summaryEvent_heliDown": "🚁 Heli derribado ×{count}",
     "summaryEvent_oilRig": "🛢️ Oil Rig ×{count}",
     "summaryEvent_vendor": "Vendedor ambulante ×{count}",
@@ -1022,5 +1021,8 @@
     "serverConnectPurgeCap": "BORRAR LO ANTERIOR Y CONECTAR",
     "serverConnectPurgeNoPermission": "Cambiar de server borra todo lo del anterior: solo pueden hacerlo los administradores del Discord o el hoster actual.",
     "serverConnectPurgeWorking": "Borrando el server anterior y conectando a {server}…",
-    "serverConnectPurgeDone": "Conectado a {server}. Borrados {servers} servers y {trackers} trackers de antes."
+    "serverConnectPurgeDone": "Conectado a {server}. Borrados {servers} servers y {trackers} trackers de antes.",
+    "summaryDeepSeaTitle": "🌊 Deep Sea",
+    "summaryDeepSeaFixed": "Abierto {open}, luego cerrado {closed} hasta el siguiente (ciclo fijo).",
+    "summaryDeepSeaRandom": "Abierto {open}, luego cerrado entre {closedMin} y {closedMax} hasta el siguiente."
 }

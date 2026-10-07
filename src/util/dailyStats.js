@@ -47,9 +47,9 @@ const EVENT_GROUPS = [
     { key: 'oilRig', settings: ['heavyScientistCalledSetting'] },
     { key: 'crates', settings: ['lockedCrateDroppedSetting'] },
     { key: 'chinook', settings: ['chinook47DetectedSetting'] },
-    { key: 'vendor', settings: ['travelingVendorDetectedSetting'] },
-    /* Real openings only (marked open, or the exact opening of a fixed cycle), not every warning */
-    { key: 'deepSea', settings: ['deepSeaOpened'] }
+    { key: 'vendor', settings: ['travelingVendorDetectedSetting'] }
+    /* The Deep Sea is not counted (each opening is a new event): it has its own field with how long
+       it stays open and how long until the next one (deepSeaLine) */
 ];
 
 const cache = new Object();
@@ -166,6 +166,21 @@ function upkeepLines(client, guildId, instance, rustplus, now) {
  *  Builds the summary of the last 24 hours.
  *  @return {Object} { title, fields: [{ name, value }] }
  */
+/* Deep Sea: how long it stays open, how long until the next one, and where it is now */
+function deepSeaLine(client, guildId, instance, now) {
+    const server = instance.activeServer !== null ? instance.serverList[instance.activeServer] : null;
+    if (!server) return null;
+    const DeepSea = require('../handlers/deepSeaHandler.js');
+    const ds = DeepSea.getDeepSea(server);
+    const fmt = (ms) => Timer.secondsToFullScale(ms / 1000, 's') || '0m';
+    const d = DeepSea.durations(ds);
+    const fixed = DeepSea.fixedClosedMs(ds);
+    const cycle = fixed ?
+        client.intlGet(guildId, 'summaryDeepSeaFixed', { open: fmt(d.openMs), closed: fmt(fixed) }) :
+        client.intlGet(guildId, 'summaryDeepSeaRandom', { open: fmt(d.openMs), closedMin: fmt(d.closedMinMs), closedMax: fmt(d.closedMaxMs) });
+    return `${cycle}\n${DeepSea.statusText(client, guildId, ds, now, true)}`.slice(0, 1024);
+}
+
 function buildSummary(client, guildId, now = Date.now()) {
     const instance = client.getInstance(guildId);
     const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
@@ -195,6 +210,9 @@ function buildSummary(client, guildId, now = Date.now()) {
 
     const upkeep = upkeepLines(client, guildId, instance, rustplus, now);
     if (upkeep.length) fields.push({ name: intl('summaryUpkeepTitle'), value: upkeep.join('\n').slice(0, 1024) });
+
+    const deepSea = deepSeaLine(client, guildId, instance, now);
+    if (deepSea) fields.push({ name: intl('summaryDeepSeaTitle'), value: deepSea });
 
 
     const server = instance.activeServer !== null ? instance.serverList[instance.activeServer] : null;

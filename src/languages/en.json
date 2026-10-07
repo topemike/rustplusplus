@@ -834,7 +834,6 @@
     "summaryEvent_cargo": "🚢 Cargo ×{count}",
     "summaryEvent_chinook": "Chinook ×{count}",
     "summaryEvent_crates": "📦 Locked crates ×{count}",
-    "summaryEvent_deepSea": "🌊 Deep Sea ×{count}",
     "summaryEvent_heliDown": "🚁 Heli down ×{count}",
     "summaryEvent_oilRig": "🛢️ Oil Rig ×{count}",
     "summaryEvent_vendor": "Travelling vendor ×{count}",
@@ -1022,5 +1021,8 @@
     "serverConnectPurgeCap": "DELETE THE PREVIOUS ONE AND CONNECT",
     "serverConnectPurgeNoPermission": "Changing server deletes everything from the previous one: only Discord administrators or the current hoster can do it.",
     "serverConnectPurgeWorking": "Deleting the previous server and connecting to {server}…",
-    "serverConnectPurgeDone": "Connected to {server}. Deleted {servers} servers and {trackers} trackers from before."
+    "serverConnectPurgeDone": "Connected to {server}. Deleted {servers} servers and {trackers} trackers from before.",
+    "summaryDeepSeaTitle": "🌊 Deep Sea",
+    "summaryDeepSeaFixed": "Open {open}, then closed {closed} until the next one (fixed cycle).",
+    "summaryDeepSeaRandom": "Open {open}, then closed between {closedMin} and {closedMax} until the next one."
 }
