@@ -316,10 +316,8 @@ module.exports = {
                 }
             }
             else if (content.autoDayNightOnOff === 7) { /* AUTO-ON-ANY-ONLINE */
-                let shouldBeOn = false;
-                for (const player of rustplus.team.players) {
-                    if (player.isOnline) shouldBeOn = true;
-                }
+                const onlineState = Proximity.decideOnline(rustplus, entityId);
+                const shouldBeOn = onlineState.decidedOnline;
                 const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
@@ -333,6 +331,8 @@ module.exports = {
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
                     instance.serverList[serverId].switches[entityId].active = shouldBeOn;
+                    rustplus.log(client.intlGet(null, 'infoCap'), `Any online: ${content.name} (${content.command}) -> ` +
+                        `${shouldBeOn ? 'ON' : 'OFF'}. Online: ${onlineState.online.join(', ') || 'nobody'}.`);
                     client.setInstance(guildId, instance);
 
                     rustplus.interactionSwitches.push(entityId);
@@ -356,10 +356,8 @@ module.exports = {
                 }
             }
             else if (content.autoDayNightOnOff === 8) { /* AUTO-OFF-ANY-ONLINE */
-                let shouldBeOn = true;
-                for (const player of rustplus.team.players) {
-                    if (player.isOnline) shouldBeOn = false;
-                }
+                const onlineState = Proximity.decideOnline(rustplus, entityId);
+                const shouldBeOn = !onlineState.decidedOnline;
                 const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
@@ -373,6 +371,8 @@ module.exports = {
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
                     instance.serverList[serverId].switches[entityId].active = shouldBeOn;
+                    rustplus.log(client.intlGet(null, 'infoCap'), `Any online: ${content.name} (${content.command}) -> ` +
+                        `${shouldBeOn ? 'ON' : 'OFF'}. Online: ${onlineState.online.join(', ') || 'nobody'}.`);
                     client.setInstance(guildId, instance);
 
                     rustplus.interactionSwitches.push(entityId);

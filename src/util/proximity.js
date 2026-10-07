@@ -74,6 +74,24 @@ module.exports = {
         return state;
     },
 
+    /* AUTO-ON/OFF-ANY-ONLINE: is someone in the team online (with the same confirmation time,
+       so a short glitch where everyone looks offline does not flip it) */
+    decideOnline: function (rustplus, entityId, now = Date.now()) {
+        const players = (rustplus.team && rustplus.team.players) ? rustplus.team.players : [];
+        const online = players.filter(p => p.isOnline).map(p => p.name);
+        if (!rustplus.onlineAwaySince) rustplus.onlineAwaySince = {};
+        let decidedOnline;
+        if (online.length > 0) {
+            delete rustplus.onlineAwaySince[entityId];
+            decidedOnline = true;
+        }
+        else {
+            if (!rustplus.onlineAwaySince[entityId]) rustplus.onlineAwaySince[entityId] = now;
+            decidedOnline = (now - rustplus.onlineAwaySince[entityId]) < module.exports.AWAY_CONFIRM_MS;
+        }
+        return { online: online, decidedOnline: decidedOnline };
+    },
+
     /* Short text for logs and the in-game status: "tope a 35 m (límite 500 m)" */
     describe: function (client, guildId, sw, state) {
         const parts = [];
