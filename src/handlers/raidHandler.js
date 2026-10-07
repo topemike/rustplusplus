@@ -272,7 +272,13 @@ async function sendReminder(client, guildId, incident) {
         })]
     };
     if (!content.content) delete content.content;
-    await DiscordMessages.sendMessage(guildId, content, null, incident.channelId || raidChannel(instance));
+    /* Each reminder has its own I'M ON IT button: the raid can be stopped from any of them */
+    content.components = [getAckButton(client, guildId, incident)];
+    const message = await DiscordMessages.sendMessage(guildId, content, null, incident.channelId || raidChannel(instance));
+    if (message && message.id) {
+        if (!incident.reminderIds) incident.reminderIds = [];
+        incident.reminderIds.push(message.id);
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -426,8 +432,10 @@ async function onAlarmLost(client, guildId, entityId, now = Date.now()) {
 async function acknowledge(client, interaction) {
     const guildId = interaction.guildId;
     const incident = incidents[guildId];
-    if (!incident || incident.acknowledgedBy ||
-        (interaction.message && incident.messageId && interaction.message.id !== incident.messageId)) {
+    const fromReminder = !!incident && !!interaction.message && Array.isArray(incident.reminderIds) &&
+        incident.reminderIds.includes(interaction.message.id);
+    if (!incident || incident.acknowledgedBy || (interaction.message && incident.messageId &&
+        interaction.message.id !== incident.messageId && !fromReminder)) {
         /* Old raid message (e.g. the bot restarted during the raid): unpin it and disable the button */
         try {
             if (!interaction.message) throw new Error("no message");
@@ -445,6 +453,16 @@ async function acknowledge(client, interaction) {
         return;
     }
     incident.acknowledgedBy = interaction.user.id;
+    if (fromReminder) {
+        /* Pressed on a reminder: disable its button, then update (and unpin) the raid message */
+        try {
+            await client.interactionUpdate(interaction, { components: [getAckButton(client, guildId, incident)] });
+        }
+        catch (e) { /* ignore */ }
+        incident.dirty = true;
+        await sendOrEditIncident(client, guildId, incident, false);
+        return;
+    }
     await client.interactionUpdate(interaction, {
         embeds: [getIncidentEmbed(client, guildId, incident)],
         components: [getAckButton(client, guildId, incident)]

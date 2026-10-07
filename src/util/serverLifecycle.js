@@ -205,14 +205,6 @@ function getConnectPurgeMessage(client, guildId, targetServerId) {
     };
 }
 
-/* Offered when the bot connects to a different server than the previous one */
-async function sendServerChangeOffer(client, guildId, keepServerId) {
-    const instance = client.getInstance(guildId);
-    const content = getServerChangeMessage(client, guildId, keepServerId);
-    if (!content) return;
-    await DiscordMessages.sendMessage(guildId, content, null, instance.channelId.activity);
-}
-
 /**
  *  Removes everything that belongs to servers other than `keepServerId`: the servers with their
  *  devices, groups, Deep Sea and base, their trackers and tracker history, the event and raid
@@ -319,7 +311,6 @@ module.exports = {
     purgeEverything: purgeEverything,
     getServerChangeMessage: getServerChangeMessage,
     getConnectPurgeMessage: getConnectPurgeMessage,
-    sendServerChangeOffer: sendServerChangeOffer,
     purgeOtherServers: purgeOtherServers,
     sendWipeCleanupOffer: sendWipeCleanupOffer,
     cleanupUnreachableDevices: cleanupUnreachableDevices,

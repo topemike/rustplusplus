@@ -162,10 +162,6 @@ function upkeepLines(client, guildId, instance, rustplus, now) {
     return lines;
 }
 
-/**
- *  Builds the summary of the last 24 hours.
- *  @return {Object} { title, fields: [{ name, value }] }
- */
 /* Deep Sea: how long it stays open, how long until the next one, and where it is now */
 function deepSeaLine(client, guildId, instance, now) {
     const server = instance.activeServer !== null ? instance.serverList[instance.activeServer] : null;
@@ -181,6 +177,10 @@ function deepSeaLine(client, guildId, instance, now) {
     return `${cycle}\n${DeepSea.statusText(client, guildId, ds, now, true)}`.slice(0, 1024);
 }
 
+/**
+ *  Builds the summary of the last 24 hours.
+ *  @return {Object} { title, fields: [{ name, value }] }
+ */
 function buildSummary(client, guildId, now = Date.now()) {
     const instance = client.getInstance(guildId);
     const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;

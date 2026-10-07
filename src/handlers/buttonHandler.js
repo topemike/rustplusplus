@@ -454,6 +454,14 @@ module.exports = async (client, interaction) => {
             return;
         }
 
+        /* A second click while it is still working does nothing */
+        if (!client.connectPurging) client.connectPurging = {};
+        if (client.connectPurging[guildId]) {
+            try { await interaction.deferUpdate(); } catch (e) { /* ignore */ }
+            return;
+        }
+        client.connectPurging[guildId] = true;
+
         await client.interactionUpdate(interaction, {
             embeds: [DiscordEmbeds.getEmbed({
                 color: Constants.COLOR_DEFAULT,
@@ -462,13 +470,26 @@ module.exports = async (client, interaction) => {
             components: []
         });
 
-        /* Stop the current connection before deleting its server */
-        if (rustplus) {
-            rustplus.isDeleted = true;
-            try { rustplus.disconnect(); } catch (e) { /* already disconnected */ }
+        /* Stop the current connection and any pending reconnect BEFORE deleting its server:
+           a reconnect timer firing during the purge would look for a server that no longer exists */
+        client.resetRustplusVariables(guildId);
+        const current = client.rustplusInstances[guildId];
+        if (current) {
+            current.isDeleted = true;
+            try { current.disconnect(); } catch (e) { /* already disconnected */ }
             delete client.rustplusInstances[guildId];
         }
-        const removed = await require('../util/serverLifecycle.js').purgeOtherServers(client, guildId, ids.serverId);
+        const before = client.getInstance(guildId);
+        before.activeServer = null;
+        client.setInstance(guildId, before);
+
+        let removed = { servers: 0, trackers: 0 };
+        try {
+            removed = await require('../util/serverLifecycle.js').purgeOtherServers(client, guildId, ids.serverId);
+        }
+        finally {
+            client.connectPurging[guildId] = false;
+        }
 
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
             id: `${verifyId}`,
@@ -565,6 +586,11 @@ module.exports = async (client, interaction) => {
     else if (interaction.customId.startsWith('DeleteUnreachableDevices')) {
         const ids = JSON.parse(interaction.customId.replace('DeleteUnreachableDevices', ''));
         const server = instance.serverList[ids.serverId];
+
+        if (!client.canManage(interaction)) {
+            interaction.deferUpdate();
+            return;
+        }
 
         if (!server) {
             await interaction.message.delete();
