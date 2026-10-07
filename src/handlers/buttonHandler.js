@@ -1253,9 +1253,6 @@ module.exports = async (client, interaction) => {
             return;
         }
 
-        /* The button, to give it back if nothing could be checked (read before the update below) */
-        const originalComponents = interaction.message ? interaction.message.components : [];
-
         /* Answer first: Discord gives only 3 seconds and the cleanup can take longer */
         await client.interactionUpdate(interaction, {
             embeds: [DiscordEmbeds.getEmbed({
@@ -1272,18 +1269,6 @@ module.exports = async (client, interaction) => {
             id: `${verifyId}`,
             value: `wipe cleanup ${JSON.stringify(removed)}`
         }));
-
-        if (removed.notConnected) {
-            /* Without asking the server nothing is deleted: keep the button for later */
-            await interaction.editReply({
-                embeds: [DiscordEmbeds.getEmbed({
-                    color: Constants.COLOR_INACTIVE,
-                    description: client.intlGet(guildId, 'wipeCleanupNotConnected')
-                })],
-                components: originalComponents
-            });
-            return;
-        }
 
         let description = client.intlGet(guildId, 'wipeCleanupDoneDesc', removed);
         if (removed.kept > 0) description += `\n${client.intlGet(guildId, 'wipeCleanupKept', { kept: removed.kept })}`;

@@ -69,23 +69,19 @@ async function sendWipeCleanupOffer(client, guildId, serverId) {
 }
 
 /**
- *  Removes Smart Devices of a server that the server itself confirms no longer exist (asked again
- *  now, one by one). A device that answers, or a server that does not answer, keeps the device.
- *  Needs the bot connected to that server. Switch groups are kept (emptied).
- *  @return {Object} Removed switches, alarms and storage monitors, `kept` (not confirmed gone) and
- *  `notConnected` (nothing done because the bot is not connected to that server).
+ *  After a wipe: deletes every Smart Device of the previous wipe. The only ones kept are those that
+ *  answer right now, with the bot connected to that server (paired again in the new wipe). If the
+ *  bot is not connected to it, everything is deleted. Switch groups are kept (emptied).
+ *  @return {Object} Number of removed switches, alarms and storage monitors, and `kept`.
  */
 async function cleanupUnreachableDevices(client, guildId, serverId) {
     const instance = client.getInstance(guildId);
     const server = instance.serverList[serverId];
-    const removed = { switches: 0, alarms: 0, storageMonitors: 0, kept: 0, notConnected: false };
+    const removed = { switches: 0, alarms: 0, storageMonitors: 0, kept: 0 };
     if (!server) return removed;
 
     const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
-    if (!rustplus || !rustplus.isOperational || rustplus.serverId !== serverId) {
-        removed.notConnected = true;
-        return removed;
-    }
+    const live = !!rustplus && rustplus.isOperational && rustplus.serverId === serverId;
     const DeviceNotices = require('./deviceNotices.js');
 
     const lists = [
@@ -97,16 +93,16 @@ async function cleanupUnreachableDevices(client, guildId, serverId) {
 
     for (const [key, channelId] of lists) {
         for (const [entityId, entity] of Object.entries(server[key] || {})) {
-            if (entity.reachable !== false) continue;
-
-            /* Only what the server says does not exist */
-            let response;
-            try { response = await rustplus.getEntityInfoAsync(entityId); }
-            catch (e) { response = undefined; }
-            if (!DeviceNotices.answeredNotFound(response)) {
-                if (DeviceNotices.answeredFound(response)) entity.reachable = true;
-                removed.kept++;
-                continue;
+            /* Kept only if it answers now: it belongs to the new wipe */
+            if (live) {
+                let response;
+                try { response = await rustplus.getEntityInfoAsync(entityId); }
+                catch (e) { response = undefined; }
+                if (DeviceNotices.answeredFound(response)) {
+                    entity.reachable = true;
+                    removed.kept++;
+                    continue;
+                }
             }
 
             try {

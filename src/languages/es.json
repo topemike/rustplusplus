@@ -992,7 +992,7 @@
     "serverChangeWorking": "Borrando todo lo de los otros servers…",
     "serverChangeDoneTitle": "🧹 Empezamos de cero",
     "serverChangeDoneDesc": "Borrados {servers} servers y {trackers} trackers, además del historial de eventos y los mensajes antiguos. Solo queda el server actual.",
-    "wipeCleanupDesc": "Los dispositivos del wipe anterior ya no existen. Ahora mismo no responden: {switches} switches, {alarms} alarmas y {storageMonitors} storage monitors. Pulsa el botón para borrar los que no respondan y vaciar el canal de avisos de la base (los grupos de switches se conservan, vacíos, para reutilizarlos).",
+    "wipeCleanupDesc": "Wipe detectado. Ahora mismo no responden: {switches} switches, {alarms} alarmas y {storageMonitors} storage monitors. El botón borra TODO lo del wipe anterior: solo se conservan los dispositivos que respondan en este momento con el bot conectado (los emparejados en este wipe). También vacía el canal de avisos de la base. Los grupos de switches se conservan, vacíos, para reutilizarlos.",
     "wipeCleanupDoneDesc": "Borrados {switches} switches, {alarms} alarmas y {storageMonitors} storage monitors.",
     "wipeCleanupDoneTitle": "Dispositivos viejos borrados",
     "wipeCleanupTitle": "Wipe: dispositivos del wipe anterior",
@@ -1015,7 +1015,6 @@
     "switchRaidLockTitle": "🚨 Puesto por la alarma de raid",
     "switchRaidLockDesc": "Lo apagó la alarma de raid. Se queda así, sin hacer caso a su modo automático, hasta que pulséis VOLVER A AUTOMÁTICO, volváis a elegir el modo o uséis su comando.",
     "raidEndedLockedReminder": "Siguen como los dejó la alarma: {targets}. Pulsad VOLVER A AUTOMÁTICO en cada uno (o usad su comando) cuando queráis.",
-    "wipeCleanupNotConnected": "El bot no está conectado a ese server, así que no puede comprobar qué dispositivos ya no existen. No se ha borrado nada: vuelve a pulsar el botón cuando esté conectado.",
-    "wipeCleanupKept": "Se han conservado {kept}: han vuelto a responder o el server no contestó.",
+    "wipeCleanupKept": "Se conservan {kept} que responden (son de este wipe).",
     "deepSeaOpenedEvent": "Deep Sea abierto."
 }

@@ -992,7 +992,7 @@
     "serverChangeWorking": "Deleting everything from the other servers…",
     "serverChangeDoneTitle": "🧹 Clean start",
     "serverChangeDoneDesc": "Removed {servers} servers and {trackers} trackers, plus the event history and old messages. Only the current server is left.",
-    "wipeCleanupDesc": "Smart Devices from the previous wipe no longer exist. Not responding right now: {switches} switches, {alarms} alarms and {storageMonitors} storage monitors. Press the button to remove the ones that do not respond and empty the base alerts channel (switch groups are kept, empty, so you can reuse them).",
+    "wipeCleanupDesc": "Wipe detected. Devices of the previous wipe right now not responding: {switches} switches, {alarms} alarms and {storageMonitors} storage monitors. The button deletes EVERYTHING from the previous wipe: only the devices that answer right now, with the bot connected (paired in this wipe), are kept. It also empties the base alerts channel. Switch groups are kept, empty, to reuse them.",
     "wipeCleanupDoneDesc": "Removed {switches} switches, {alarms} alarms and {storageMonitors} storage monitors.",
     "wipeCleanupDoneTitle": "Old devices removed",
     "wipeCleanupTitle": "Wipe: devices from the previous wipe",
@@ -1015,7 +1015,6 @@
     "switchRaidLockTitle": "🚨 Set by the raid alarm",
     "switchRaidLockDesc": "Turned off by the raid alarm. It stays like this, ignoring its automatic mode, until you press BACK TO AUTO, choose the mode again or use its command.",
     "raidEndedLockedReminder": "Still as the alarm left them: {targets}. Press BACK TO AUTO on each one (or use its command) when you want.",
-    "wipeCleanupNotConnected": "The bot is not connected to that server, so it cannot check which devices are really gone. Nothing was deleted: press the button again once it is connected.",
-    "wipeCleanupKept": "{kept} were kept: they answered again or the server did not reply.",
+    "wipeCleanupKept": "Kept {kept} that answer (they are from this wipe).",
     "deepSeaOpenedEvent": "Deep Sea opened."
 }
