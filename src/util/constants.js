@@ -57,6 +57,8 @@ module.exports = {
     DEFAULT_CARGO_SHIP_EGRESS_TIME_MS: 50 * 60 * 1000, /* 50 min */
     DEFAULT_OIL_RIG_LOCKED_CRATE_UNLOCK_TIME_MS: 15 * 60 * 1000, /* 15 min */
     DEFAULT_BRADLEY_RESPAWN_TIME_MS: 60 * 60 * 1000, /* 60 min (estimate, editable per server) */
+    HELI_NEAR_BASE_GRIDS: 3,        /* Patrol Heli "near the base" alert (also shown in its setting text) */
+    HELI_LEAVE_BASE_GRIDS: 3.5,     /* ...and "leaving", a bit further so it does not flap at the edge */
 
     /* Other constants */
     PATROL_HELI_DOWNED_RADIUS: 400,

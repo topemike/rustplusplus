@@ -372,7 +372,7 @@ module.exports = {
             }
             description += `\n**${Client.client.intlGet(guildId, 'upkeep')}** ${upkeep}`;
 
-            /* Per material: how long each lasts and what to add (learned while the team is offline) */
+            /* Per material: how long each lasts and what to add (learned from the TC readings, online or not) */
             const UpkeepRates = require('../util/upkeepRates.js');
             const breakdown = UpkeepRates.breakdown(entity, items, expiry);
             if (breakdown) {

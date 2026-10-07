@@ -23,8 +23,6 @@
  *  - Tool Cupboard upkeep: warns when the protection time drops below configured thresholds
  *    (3h and 1h by default), once per threshold until upkeep is refilled, saying which material
  *    runs out first and how much to add (learned by util/upkeepRates.js).
- *  - Watched containers (new WATCH button): warns when many items disappear at once,
- *    by default only while the whole team is offline (a teammate looting is not an alert).
  */
 
 const Config = require('../../config');
@@ -34,41 +32,6 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const Timer = require('../util/timer');
 const UpkeepRates = require('../util/upkeepRates.js');
 
-/* Several updates in a short time are merged into one alert */
-const ITEM_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
-
-const lastItemAlert = new Object();
-
-function totalItems(items) {
-    if (!Array.isArray(items)) return 0;
-    return items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-}
-
-function countByItem(items) {
-    const counts = new Object();
-    if (!Array.isArray(items)) return counts;
-    for (const item of items) counts[item.itemId] = (counts[item.itemId] || 0) + (item.quantity || 0);
-    return counts;
-}
-
-/**
- *  Items that went missing between two snapshots: [{ itemId, quantity }] sorted by quantity.
- */
-function missingItems(prevItems, newItems) {
-    const before = countByItem(prevItems);
-    const after = countByItem(newItems);
-    const missing = [];
-    for (const [itemId, quantity] of Object.entries(before)) {
-        const diff = quantity - (after[itemId] || 0);
-        if (diff > 0) missing.push({ itemId: itemId, quantity: diff });
-    }
-    return missing.sort((a, b) => b.quantity - a.quantity);
-}
-
-function isWholeTeamOffline(rustplus) {
-    if (!rustplus || !rustplus.team || !Array.isArray(rustplus.team.players)) return false;
-    return rustplus.team.players.every(p => !p.isOnline);
-}
 
 async function sendAlert(client, guildId, title, description, color, everyone) {
     const instance = client.getInstance(guildId);
@@ -144,43 +107,9 @@ async function onStorageUpdate(client, rustplus, entityId, prevItems, payload, n
             }
         }
     }
-
-    /* Watched containers */
-    if (!entity.watch || prevItems === null || prevItems === undefined) return;
-
-    const prevTotal = totalItems(prevItems);
-    const newTotal = totalItems(payload.items);
-    const lost = prevTotal - newTotal;
-    if (lost <= 0 || prevTotal === 0) return;
-
-    const lostPercent = lost / prevTotal * 100;
-    if (lostPercent < Config.baseWatch.boxDropPercent) return;
-
-    const teamOffline = isWholeTeamOffline(rustplus);
-    if (Config.baseWatch.boxAlertOnlyWhenTeamOffline && !teamOffline) return;
-
-    const key = `${guildId}-${entityId}`;
-    if (lastItemAlert[key] && nowMs - lastItemAlert[key] < ITEM_ALERT_COOLDOWN_MS) return;
-    lastItemAlert[key] = nowMs;
-
-    const missing = missingItems(prevItems, payload.items).slice(0, 8)
-        .map(m => `${m.quantity}× ${client.items ? client.items.getName(m.itemId) : m.itemId}`).join(', ');
-
-    await sendAlert(client, guildId,
-        client.intlGet(guildId, 'boxLootedTitle', { name: entity.name }),
-        client.intlGet(guildId, teamOffline ? 'boxLootedDescOffline' : 'boxLootedDesc', {
-            percent: Math.round(lostPercent),
-            items: missing,
-            location: entity.location || '-'
-        }),
-        Constants.COLOR_INACTIVE, teamOffline);
 }
 
 module.exports = {
     onStorageUpdate: onStorageUpdate,
-    checkUpkeep: checkUpkeep,
-    missingItems: missingItems,
-
-    /* For tests */
-    _reset: function () { for (const k of Object.keys(lastItemAlert)) delete lastItemAlert[k]; }
+    checkUpkeep: checkUpkeep
 };

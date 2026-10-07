@@ -56,8 +56,8 @@ const OIL_RIG_CRATE_DISTANCE = 150;
 const CHINOOK_RECENT_MS = 3 * MINUTE_MS;
 /* Warn when the Patrol Helicopter comes this close to the base (in grids), and
    again when it moves away past the leave distance (a margin, so it does not flap). */
-const NEAR_BASE_GRIDS = 3;
-const LEAVE_BASE_GRIDS = 3.5;
+const NEAR_BASE_GRIDS = Constants.HELI_NEAR_BASE_GRIDS;
+const LEAVE_BASE_GRIDS = Constants.HELI_LEAVE_BASE_GRIDS;
 const BASE_CLEAR_WORDS = ['clear', 'remove', 'delete', 'borrar', 'quitar'];
 const BASE_INFO_WORDS = ['info', 'status', 'estado', '?'];
 
@@ -285,18 +285,6 @@ class ExtraEvents {
         return server && server.baseLocation ? server.baseLocation : null;
     }
 
-    formatGrids(grids) {
-        const instance = this.client.getInstance(this.rustplus.guildId);
-        const language = instance.generalSettings && instance.generalSettings.language ?
-            instance.generalSettings.language : 'en';
-        try {
-            return grids.toLocaleString(language, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-        }
-        catch (e) {
-            return grids.toFixed(1);
-        }
-    }
-
     updateNearBase(markers) {
         const base = this.getBase();
         if (!base) {
@@ -312,7 +300,10 @@ class ExtraEvents {
 
         for (const marker of helis) {
             const key = `${marker.id}`;
-            const grids = Map.getDistance(marker.x, marker.y, base.x, base.y) / Map.gridDiameter;
+            const meters = Map.getDistance(marker.x, marker.y, base.x, base.y);
+            const grids = meters / Map.gridDiameter;
+            /* Shown rounded, e.g. "about 350 m" (map units are metres) */
+            const aboutMeters = Math.max(10, Math.round(meters / 10) * 10);
             const state = this.nearBase[key] || (this.nearBase[key] = { near: false, lastGrids: null });
             const approaching = state.lastGrids !== null && grids < state.lastGrids;
 
@@ -321,7 +312,7 @@ class ExtraEvents {
                 this.rustplus.sendEvent(
                     this.rustplus.notificationSettings.heliNearBaseSetting,
                     this.client.intlGet(this.rustplus.guildId, approaching ? 'heliNearBaseApproaching' : 'heliNearBase', {
-                        distance: this.formatGrids(grids),
+                        meters: aboutMeters,
                         location: this.getPos(marker).string
                     }),
                     'heli',
@@ -331,7 +322,9 @@ class ExtraEvents {
                 state.near = false;
                 this.rustplus.sendEvent(
                     this.rustplus.notificationSettings.heliNearBaseSetting,
-                    this.client.intlGet(this.rustplus.guildId, 'heliLeftBase', { location: this.getPos(marker).string }),
+                    this.client.intlGet(this.rustplus.guildId, 'heliLeftBase', {
+                        meters: aboutMeters, location: this.getPos(marker).string
+                    }),
                     'heli',
                     Constants.COLOR_PATROL_HELICOPTER_LEFT_BASE);
             }

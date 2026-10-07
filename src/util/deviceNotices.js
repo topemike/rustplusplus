@@ -46,7 +46,43 @@ function answeredFound(response) {
     return !!response && typeof response === 'object' && !response.error && !!response.entityInfo;
 }
 
+/* Errors from Rust+ that mean "this device no longer exists" */
+const MISSING_ERRORS = ['not_found'];
+/* Errors that say nothing about the device (busy server, our own request limit) */
+const TRANSIENT_ERRORS = ['rate_limit', 'server_error'];
+/* The device exists but the connected account cannot use it (e.g. not authorised on the TC):
+   not a "gone" notice, but worth a line in the log */
+const NO_ACCESS_ERRORS = ['access_denied'];
+const loggedErrors = new Set();
+
+/**
+ *  What the server said about a device: 'found', 'missing' (it no longer exists) or 'unknown'
+ *  (timeout, no answer, busy server, no access). An error text not in the lists above is logged once, so a change in Rust+ is noticed
+ *  instead of silently never sending a notice.
+ */
+function classify(response, client = null) {
+    if (answeredFound(response)) return 'found';
+    const error = response && typeof response === 'object' && typeof response.error === 'string' ? response.error : null;
+    if (error === null) return 'unknown';
+    if (MISSING_ERRORS.includes(error)) return 'missing';
+    /* Our own token limit: getEntityInfoAsync() returns its translated text as the error */
+    const ownLimit = client && typeof client.intlGet === 'function' && error === client.intlGet(null, 'tokensDidNotReplenish');
+    if (!TRANSIENT_ERRORS.includes(error) && !ownLimit && !loggedErrors.has(error)) {
+        loggedErrors.add(error);
+        if (client && typeof client.log === 'function') {
+            const text = NO_ACCESS_ERRORS.includes(error) ?
+                'Device check: the connected account has no access to a device (access_denied); is it authorised?' :
+                `Device check: unexpected Rust+ answer "${error}"`;
+            client.log(client.intlGet(null, 'warningCap'), text, 'warn');
+        }
+    }
+    return 'unknown';
+}
+
 module.exports = {
+    answeredNotFound: answeredNotFound,
+    answeredFound: answeredFound,
+    classify: classify,
     CHECK_EVERY_MS: CHECK_EVERY_MS,
     CONFIRMATIONS: CONFIRMATIONS,
 
@@ -91,8 +127,9 @@ module.exports = {
             try { response = await rustplus.getEntityInfoAsync(p.entityId); }
             catch (e) { response = undefined; }
 
-            if (answeredFound(response)) { delete pending[key]; continue; }
-            if (!answeredNotFound(response)) continue;    /* timeout / no answer: proves nothing */
+            const state = classify(response, client);
+            if (state === 'found') { delete pending[key]; continue; }
+            if (state !== 'missing') continue;    /* timeout / no answer: proves nothing */
 
             p.misses++;
             if (p.misses < CONFIRMATIONS) continue;

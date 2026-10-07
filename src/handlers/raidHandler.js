@@ -20,9 +20,11 @@
 
 /*
  *  Raid incidents: groups Smart Alarm triggers into a single Discord message.
- *  - First trigger: one message (with @everyone if the alarm has it) and an "I'm on it" button.
+ *  - First trigger: one pinned message with @everyone and an "I'm on it" button (the only one).
  *  - Further triggers only update that message (counter, last trigger), throttled.
- *  - If nobody acknowledges, one reminder every N minutes while alarms keep triggering.
+ *  - While the raid lasts and nobody pressed the button: every N minutes (2) the same reminder is
+ *    posted again with @everyone (the previous one is deleted, so there is only ever one).
+ *    It stops when someone presses the button, the raid ends or the alarm stops responding.
  *  - After M minutes without triggers the raid is considered over and a summary is posted.
  *  - Alarm actions: switches / switch groups turned on when the alarm triggers, with a hold
  *    time during which automatic switch modes do not turn them off.
@@ -169,6 +171,8 @@ function getIncidentEmbed(client, guildId, incident, now = Date.now()) {
     }
 
     description += `\n${client.intlGet(guildId, 'raidAlarms', { alarms: alarms })}`;
+    /* Last text sent by the raid-alarm plugin (e.g. where the attack is) */
+    if (incident.pluginNote) description += `\n> ${incident.pluginNote}`;
     if (incident.acknowledgedBy) {
         description += `\n${client.intlGet(guildId, 'raidAcknowledgedBy', { user: `<@${incident.acknowledgedBy}>` })}`;
     }
@@ -238,12 +242,13 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
                 embeds: [getIncidentEmbed(client, guildId, incident)],
                 components: [getAckButton(client, guildId, incident)]
             };
-            if (mention && incident.everyone) content.content = getMention(client, guildId);
+            if (mention) content.content = getMention(client, guildId);
             mention = false;
 
             if (!incident.channelId) incident.channelId = raidChannel(instance);
             const message = await DiscordMessages.sendMessage(guildId, content, incident.messageId, incident.channelId);
             if (message && message.id) incident.messageId = message.id;
+            /* Pinned until someone has seen it or the raid is over */
             await setPinned(client, guildId, incident, !incident.endedAt && !incident.acknowledgedBy);
             incident.lastEditAt = Date.now();
             incident.dirty = false;
@@ -256,8 +261,12 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
 
 async function sendReminder(client, guildId, incident) {
     const instance = client.getInstance(guildId);
+    const channelId = incident.channelId || raidChannel(instance);
+    /* Always the same single reminder: the previous one is removed and posted again (a new message
+       is what makes @everyone ring). The button is only on the raid message. */
+    await deleteReminder(guildId, incident);
     const content = {
-        content: incident.everyone ? getMention(client, guildId) : undefined,
+        content: getMention(client, guildId),
         embeds: [DiscordEmbeds.getEmbed({
             color: Constants.COLOR_INACTIVE,
             title: client.intlGet(guildId, 'raidReminderTitle'),
@@ -267,8 +276,15 @@ async function sendReminder(client, guildId, incident) {
             })
         })]
     };
-    if (!content.content) delete content.content;
-    await DiscordMessages.sendMessage(guildId, content, null, incident.channelId || raidChannel(instance));
+    const message = await DiscordMessages.sendMessage(guildId, content, null, channelId);
+    if (message && message.id) incident.reminderId = message.id;
+}
+
+async function deleteReminder(guildId, incident) {
+    if (!incident.reminderId) return;
+    try { await DiscordTools.deleteMessageById(guildId, incident.channelId, incident.reminderId); }
+    catch (e) { /* already gone */ }
+    incident.reminderId = null;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -279,9 +295,23 @@ async function sendReminder(client, guildId, incident) {
  *  Called when a Smart Alarm of the connected server triggers (raid mode on).
  */
 async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, now = Date.now()) {
+    const server = client.getInstance(guildId).serverList[serverId];
+    await trigger(client, rustplus, guildId, serverId, entityId, server.alarms[entityId], true, now);
+}
+
+/**
+ *  Raid alert pushed by the "raid-alarm" server plugin (FCM): no Smart Alarm entity behind it.
+ *  It joins the same grouped raid message instead of an @everyone message per notification.
+ */
+async function onPluginAlarm(client, rustplus, guildId, serverId, title, message, now = Date.now()) {
+    const alarm = { name: title || 'Raid alarm', message: message || '', everyone: true };
+    await trigger(client, rustplus, guildId, serverId, `plugin:${alarm.name}`, alarm, false, now);
+}
+
+/* key = the alarm entity id, or a pseudo id for plugin alerts. alarm = { name, message, everyone, actions? } */
+async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isSmartAlarm, now) {
     const instance = client.getInstance(guildId);
     const server = instance.serverList[serverId];
-    const alarm = server.alarms[entityId];
 
     let incident = incidents[guildId];
     /* A raid of another server (the bot changed server) is not continued */
@@ -313,12 +343,14 @@ async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, n
     if (!incident.alarms[entityId]) incident.alarms[entityId] = { name: alarm.name, count: 0 };
     incident.alarms[entityId].name = alarm.name;
     incident.alarms[entityId].count++;
+    if (!isSmartAlarm && alarm.message) incident.pluginNote = `${alarm.message}`.slice(0, 300);
     incident.dirty = true;
 
     /* The alert first (with the mention), the actions after: they can take a few seconds */
     if (isNew) {
         await sendOrEditIncident(client, guildId, incident, true);
-        if (rustplus && instance.generalSettings.smartAlarmNotifyInGame) {
+        /* Plugin alerts always went to the game chat; Smart Alarms follow their setting */
+        if (rustplus && (!isSmartAlarm || instance.generalSettings.smartAlarmNotifyInGame)) {
             rustplus.sendInGameMessage(`${alarm.name}: ${alarm.message}`);
         }
     }
@@ -361,8 +393,8 @@ async function tick(client, now = Date.now()) {
                 continue;
             }
 
-            if (!incident.acknowledgedBy && now - incident.lastReminderAt >= s.reminderMs &&
-                incident.lastTriggerAt > incident.lastReminderAt) {
+            /* Nobody has seen it yet: the reminder rings again (@everyone) every few minutes */
+            if (!incident.acknowledgedBy && now - incident.lastReminderAt >= s.reminderMs) {
                 incident.lastReminderAt = now;
                 await sendReminder(client, guildId, incident);
             }
@@ -382,6 +414,7 @@ async function endIncident(client, guildId, incident, now = Date.now(), alarmsLo
     if (incident.endedAt) return;
     incident.endedAt = now;
     incident.alarmsLost = alarmsLost;
+    await deleteReminder(guildId, incident);
     await sendOrEditIncident(client, guildId, incident, false);
     require('../util/dailyStats.js').recordRaid(guildId, {
         start: incident.startedAt,
@@ -430,6 +463,7 @@ async function acknowledge(client, interaction) {
         components: [getAckButton(client, guildId, incident)]
     });
     await setPinned(client, guildId, incident, false);
+    await deleteReminder(guildId, incident);
     incident.lastEditAt = Date.now();
     incident.dirty = false;
 }
@@ -442,6 +476,7 @@ function forget(guildId) {
 module.exports = {
     forget: forget,
     onAlarmTriggered: onAlarmTriggered,
+    onPluginAlarm: onPluginAlarm,
     tick: tick,
     acknowledge: acknowledge,
     onAlarmLost: onAlarmLost,

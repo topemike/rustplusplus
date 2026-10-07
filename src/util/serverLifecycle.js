@@ -69,14 +69,20 @@ async function sendWipeCleanupOffer(client, guildId, serverId) {
 }
 
 /**
- *  Removes Smart Devices of a server that do not respond. Switch groups are kept (emptied).
- *  @return {Object} Number of removed switches, alarms and storage monitors.
+ *  After a wipe: deletes every Smart Device of the previous wipe. The only ones kept are those that
+ *  answer right now, with the bot connected to that server (paired again in the new wipe). If the
+ *  bot is not connected to it, everything is deleted. Switch groups are kept (emptied).
+ *  @return {Object} Number of removed switches, alarms and storage monitors, and `kept`.
  */
 async function cleanupUnreachableDevices(client, guildId, serverId) {
     const instance = client.getInstance(guildId);
     const server = instance.serverList[serverId];
-    const removed = { switches: 0, alarms: 0, storageMonitors: 0 };
+    const removed = { switches: 0, alarms: 0, storageMonitors: 0, kept: 0 };
     if (!server) return removed;
+
+    const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
+    const live = !!rustplus && rustplus.isOperational && rustplus.serverId === serverId;
+    const DeviceNotices = require('./deviceNotices.js');
 
     const lists = [
         ['switches', instance.channelId.switches],
@@ -87,7 +93,18 @@ async function cleanupUnreachableDevices(client, guildId, serverId) {
 
     for (const [key, channelId] of lists) {
         for (const [entityId, entity] of Object.entries(server[key] || {})) {
-            if (entity.reachable !== false) continue;
+            /* Kept only if it answers now: it belongs to the new wipe */
+            if (live) {
+                let response;
+                try { response = await rustplus.getEntityInfoAsync(entityId); }
+                catch (e) { response = undefined; }
+                if (DeviceNotices.answeredFound(response)) {
+                    entity.reachable = true;
+                    removed.kept++;
+                    continue;
+                }
+            }
+
             try {
                 await DiscordTools.deleteMessageById(guildId, channelId, entity.messageId);
             }
@@ -160,12 +177,32 @@ function getServerChangeMessage(client, guildId, keepServerId) {
     };
 }
 
-/* Offered when the bot connects to a different server than the previous one */
-async function sendServerChangeOffer(client, guildId, keepServerId) {
+/**
+ *  Warning shown when someone presses CONNECT on a server while others are still stored: connecting
+ *  deletes everything about them first. null if there is nothing to delete.
+ */
+function getConnectPurgeMessage(client, guildId, targetServerId) {
     const instance = client.getInstance(guildId);
-    const content = getServerChangeMessage(client, guildId, keepServerId);
-    if (!content) return;
-    await DiscordMessages.sendMessage(guildId, content, null, instance.channelId.activity);
+    const target = instance.serverList[targetServerId];
+    const others = otherServers(instance, targetServerId);
+    if (!target || others.length === 0) return null;
+    const trackers = Object.values(instance.trackers || {}).filter(t => t.serverId !== targetServerId).length;
+    return {
+        embeds: [DiscordEmbeds.getEmbed({
+            color: Constants.COLOR_INACTIVE,
+            title: client.intlGet(guildId, 'serverConnectPurgeTitle', { server: target.title || targetServerId }),
+            description: client.intlGet(guildId, 'serverConnectPurgeDesc', {
+                servers: others.map(id => `• ${instance.serverList[id].title || id}`).join('\n'),
+                trackers: trackers
+            })
+        })],
+        components: [new Discord.ActionRowBuilder().addComponents(
+            new Discord.ButtonBuilder()
+                .setCustomId(`ServerConnectPurge${JSON.stringify({ serverId: targetServerId })}`)
+                .setLabel(client.intlGet(guildId, 'serverConnectPurgeCap'))
+                .setStyle(Discord.ButtonStyle.Danger))],
+        ephemeral: true
+    };
 }
 
 /**
@@ -180,9 +217,14 @@ async function purgeOtherServers(client, guildId, keepServerId) {
 
     for (const serverId of otherServers(instance, keepServerId)) {
         const server = instance.serverList[serverId];
-        for (const alarm of Object.values(server.alarms || {})) {
-            try { await DiscordTools.deleteMessageById(guildId, instance.channelId.alarms, alarm.messageId); }
-            catch (e) { /* already gone */ }
+        /* Every message of that server's devices: alarms, switches, groups and storage monitors */
+        for (const [list, channelId] of [['alarms', instance.channelId.alarms], ['switches', instance.channelId.switches],
+            ['switchGroups', instance.channelId.switchGroups], ['storageMonitors', instance.channelId.storageMonitors]]) {
+            for (const entity of Object.values(server[list] || {})) {
+                if (!channelId || !entity || !entity.messageId) continue;
+                try { await DiscordTools.deleteMessageById(guildId, channelId, entity.messageId); }
+                catch (e) { /* already gone */ }
+            }
         }
         try { await DiscordTools.deleteMessageById(guildId, instance.channelId.servers, server.messageId); }
         catch (e) { /* already gone */ }
@@ -239,21 +281,24 @@ function getPurgeAllMessage(client, guildId) {
 }
 
 /**
- *  Deletes everything about every server: disconnects the bot, empties the device channels and
- *  #information, then removes all servers, trackers and history (see purgeOtherServers).
+ *  Leaves the bot at zero, as if it had never been used, except for `keepServerId` (the server
+ *  about to be connected; null = keep nothing). Disconnects first (and stops any pending
+ *  reconnect), empties the device channels and #information, then removes every other server,
+ *  trackers and history (see purgeOtherServers). Channels, settings and credentials stay: on the
+ *  next connection the bot fills the channels again for the new server.
  */
-async function purgeEverything(client, guildId) {
-    const instance = client.getInstance(guildId);
+async function purgeAllExcept(client, guildId, keepServerId) {
+    try { client.resetRustplusVariables(guildId); } catch (e) { /* not critical */ }
     const rustplus = client.rustplusInstances[guildId];
     if (rustplus) {
         rustplus.isDeleted = true;
         try { rustplus.disconnect(); } catch (e) { /* already disconnected */ }
         delete client.rustplusInstances[guildId];
     }
+    const instance = client.getInstance(guildId);
     instance.activeServer = null;
     for (const key of Object.keys(instance.informationMessageId || {})) instance.informationMessageId[key] = null;
     client.setInstance(guildId, instance);
-    try { client.resetRustplusVariables(guildId); } catch (e) { /* not critical */ }
 
     for (const channelId of [instance.channelId.switches, instance.channelId.switchGroups,
         instance.channelId.storageMonitors, instance.channelId.information]) {
@@ -261,14 +306,20 @@ async function purgeEverything(client, guildId) {
         try { await DiscordTools.clearTextChannel(guildId, channelId, 1000); }
         catch (e) { /* ignore */ }
     }
-    return await purgeOtherServers(client, guildId, null);
+    return await purgeOtherServers(client, guildId, keepServerId);
+}
+
+/* Deletes everything about every server (/limpieza todo) */
+async function purgeEverything(client, guildId) {
+    return await purgeAllExcept(client, guildId, null);
 }
 
 module.exports = {
     getPurgeAllMessage: getPurgeAllMessage,
     purgeEverything: purgeEverything,
+    purgeAllExcept: purgeAllExcept,
     getServerChangeMessage: getServerChangeMessage,
-    sendServerChangeOffer: sendServerChangeOffer,
+    getConnectPurgeMessage: getConnectPurgeMessage,
     purgeOtherServers: purgeOtherServers,
     sendWipeCleanupOffer: sendWipeCleanupOffer,
     cleanupUnreachableDevices: cleanupUnreachableDevices,

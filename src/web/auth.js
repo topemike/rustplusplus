@@ -92,7 +92,9 @@ function parseCookies(req) {
     for (const part of `${req.headers.cookie || ''}`.split(';')) {
         const index = part.indexOf('=');
         if (index < 0) continue;
-        cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+        /* A malformed value (e.g. a lone %) is ignored instead of failing the whole request */
+        try { cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim()); }
+        catch (e) { /* skip this cookie */ }
     }
     return cookies;
 }
@@ -177,7 +179,8 @@ function getSession(req) {
 
 /**
  *  Discord servers (where the bot is) that this user may see in the panel.
- *  Member of the server, and with the configured role if any (name or id).
+ *  Every member of the server, except someone on the bot's blacklist (and, if RPP_WEB_ROLE is set,
+ *  members without that role).
  *  @return {Array} [guildId]
  */
 async function allowedGuilds(client, userId) {
@@ -193,16 +196,14 @@ async function allowedGuilds(client, userId) {
         catch (e) {
             continue;   /* not a member */
         }
-        /* Same people who can see the bot channels: the panel role, or else the bot's /role, and
-           never someone on the bot's blacklist (Discord administrators always get in) */
+        /* Every member of the Discord gets in. Only exceptions: someone on the bot's blacklist,
+           and, if RPP_WEB_ROLE is set in the .env, members without that role. */
         let instance = null;
         try { instance = client.getInstance(guild.id); } catch (e) { instance = null; }
-        const isAdmin = member.permissions && member.permissions.has &&
-            member.permissions.has(require('discord.js').PermissionFlagsBits.Administrator);
-        const role = Config.web.role || (instance && instance.role) || null;
-        if (!isAdmin && role && !member.roles.cache.some(r => r.name === role || r.id === role)) continue;
-        if (!isAdmin && instance && instance.blacklist && Array.isArray(instance.blacklist.discordIds) &&
+        if (instance && instance.blacklist && Array.isArray(instance.blacklist.discordIds) &&
             instance.blacklist.discordIds.includes(member.id)) continue;
+        const role = Config.web.role;
+        if (role && !member.roles.cache.some(r => r.name === role || r.id === role)) continue;
         guilds.push(guild.id);
     }
     accessCache.set(userId, { at: Date.now(), guilds: guilds });

@@ -428,6 +428,87 @@ module.exports = async (client, interaction) => {
             components: DiscordButtons.getSubscribeToChangesBattlemetricsButtons(guildId)
         });
     }
+    else if (interaction.customId.startsWith('ServerConnectPurge')) {
+        /* Confirmed: delete everything about the other servers, then connect to this one */
+        const ids = JSON.parse(interaction.customId.replace('ServerConnectPurge', ''));
+        const server = instance.serverList[ids.serverId];
+
+        if (!client.canManage(interaction)) {
+            await client.interactionUpdate(interaction, {
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_INACTIVE,
+                    description: client.intlGet(guildId, 'serverConnectPurgeNoPermission')
+                })],
+                components: []
+            });
+            return;
+        }
+        if (!server) {
+            await client.interactionUpdate(interaction, {
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_DEFAULT,
+                    description: client.intlGet(guildId, 'cleanupOutdated')
+                })],
+                components: []
+            });
+            return;
+        }
+
+        /* A second click while it is still working does nothing */
+        if (!client.connectPurging) client.connectPurging = {};
+        if (client.connectPurging[guildId]) {
+            try { await interaction.deferUpdate(); } catch (e) { /* ignore */ }
+            return;
+        }
+        client.connectPurging[guildId] = true;
+
+        await client.interactionUpdate(interaction, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_DEFAULT,
+                description: client.intlGet(guildId, 'serverConnectPurgeWorking', { server: server.title })
+            })],
+            components: []
+        });
+
+        /* The bot back to zero, keeping only the new server: disconnects (and stops any pending
+           reconnect) before deleting, empties the channels' messages, removes everything else */
+        let removed = { servers: 0, trackers: 0 };
+        try {
+            removed = await require('../util/serverLifecycle.js').purgeAllExcept(client, guildId, ids.serverId);
+        }
+        finally {
+            client.connectPurging[guildId] = false;
+        }
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `connect ${ids.serverId} and purge ${JSON.stringify(removed)}`
+        }));
+
+        const fresh = client.getInstance(guildId);
+        client.resetRustplusVariables(guildId);
+        fresh.activeServer = ids.serverId;
+        fresh.lastConnectedServer = ids.serverId;
+        client.setInstance(guildId, fresh);
+
+        const newRustplus = client.createRustplusInstance(
+            guildId, server.serverIp, server.appPort, server.steamId, server.playerToken);
+        await DiscordMessages.sendServerMessage(guildId, ids.serverId, null);
+        newRustplus.isNewConnection = true;
+
+        try {
+            await interaction.editReply({
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_ACTIVE,
+                    description: client.intlGet(guildId, 'serverConnectPurgeDone', {
+                        server: server.title, servers: removed.servers, trackers: removed.trackers
+                    })
+                })],
+                components: []
+            });
+        }
+        catch (e) { /* the warning was in a channel that got emptied */ }
+    }
     else if (interaction.customId.startsWith('ServerConnect')) {
         const ids = JSON.parse(interaction.customId.replace('ServerConnect', ''));
         const server = instance.serverList[ids.serverId];
@@ -435,6 +516,25 @@ module.exports = async (client, interaction) => {
         if (!server) {
             await interaction.message.delete();
             return;
+        }
+
+        /* Another server: everything about the previous ones is deleted first. Warn and ask. */
+        if (ids.serverId !== instance.activeServer) {
+            const warning = require('../util/serverLifecycle.js').getConnectPurgeMessage(client, guildId, ids.serverId);
+            if (warning) {
+                if (!client.canManage(interaction)) {
+                    await client.interactionReply(interaction, {
+                        embeds: [DiscordEmbeds.getEmbed({
+                            color: Constants.COLOR_INACTIVE,
+                            description: client.intlGet(guildId, 'serverConnectPurgeNoPermission')
+                        })],
+                        ephemeral: true
+                    });
+                    return;
+                }
+                await client.interactionReply(interaction, warning);
+                return;
+            }
         }
 
         client.resetRustplusVariables(guildId);
@@ -475,6 +575,11 @@ module.exports = async (client, interaction) => {
     else if (interaction.customId.startsWith('DeleteUnreachableDevices')) {
         const ids = JSON.parse(interaction.customId.replace('DeleteUnreachableDevices', ''));
         const server = instance.serverList[ids.serverId];
+
+        if (!client.canManage(interaction)) {
+            interaction.deferUpdate();
+            return;
+        }
 
         if (!server) {
             await interaction.message.delete();
@@ -615,7 +720,7 @@ module.exports = async (client, interaction) => {
         const ids = JSON.parse(interaction.customId.replace('ServerDelete', ''));
         const server = instance.serverList[ids.serverId];
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -748,7 +853,7 @@ module.exports = async (client, interaction) => {
         const ids = JSON.parse(interaction.customId.replace('SmartSwitchDelete', ''));
         const server = instance.serverList[ids.serverId];
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -823,7 +928,7 @@ module.exports = async (client, interaction) => {
         const ids = JSON.parse(interaction.customId.replace('SmartAlarmDelete', ''));
         const server = instance.serverList[ids.serverId];
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -850,25 +955,6 @@ module.exports = async (client, interaction) => {
 
         const modal = DiscordModals.getSmartAlarmEditModal(guildId, ids.serverId, ids.entityId);
         await interaction.showModal(modal);
-    }
-    else if (interaction.customId.startsWith('StorageMonitorWatch')) {
-        const ids = JSON.parse(interaction.customId.replace('StorageMonitorWatch', ''));
-        const server = instance.serverList[ids.serverId];
-
-        if (!server || (server && !server.storageMonitors.hasOwnProperty(ids.entityId))) {
-            await interaction.message.delete();
-            return;
-        }
-
-        server.storageMonitors[ids.entityId].watch = !server.storageMonitors[ids.entityId].watch;
-        client.setInstance(guildId, instance);
-
-        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
-            id: `${verifyId}`,
-            value: `${server.storageMonitors[ids.entityId].watch}`
-        }));
-
-        await DiscordMessages.sendStorageMonitorMessage(guildId, ids.serverId, ids.entityId, interaction);
     }
     else if (interaction.customId.startsWith('StorageMonitorToolCupboardEveryone')) {
         const ids = JSON.parse(interaction.customId.replace('StorageMonitorToolCupboardEveryone', ''));
@@ -924,7 +1010,7 @@ module.exports = async (client, interaction) => {
         const ids = JSON.parse(interaction.customId.replace('StorageMonitorToolCupboardDelete', ''));
         const server = instance.serverList[ids.serverId];
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -981,7 +1067,7 @@ module.exports = async (client, interaction) => {
         const ids = JSON.parse(interaction.customId.replace('StorageMonitorContainerDelete', ''));
         const server = instance.serverList[ids.serverId];
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -998,7 +1084,7 @@ module.exports = async (client, interaction) => {
         client.setInstance(guildId, instance);
     }
     else if (interaction.customId === 'RecycleDelete') {
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -1063,7 +1149,7 @@ module.exports = async (client, interaction) => {
         const ids = JSON.parse(interaction.customId.replace('GroupDelete', ''));
         const server = instance.serverList[ids.serverId];
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -1166,7 +1252,7 @@ module.exports = async (client, interaction) => {
         }
     }
     else if (interaction.customId === 'PurgeAll') {
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -1193,7 +1279,7 @@ module.exports = async (client, interaction) => {
     else if (interaction.customId.startsWith('ServerChangeCleanup')) {
         const ids = JSON.parse(interaction.customId.replace('ServerChangeCleanup', ''));
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -1237,7 +1323,7 @@ module.exports = async (client, interaction) => {
     else if (interaction.customId.startsWith('WipeCleanup')) {
         const ids = JSON.parse(interaction.customId.replace('WipeCleanup', ''));
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }
@@ -1270,11 +1356,13 @@ module.exports = async (client, interaction) => {
             value: `wipe cleanup ${JSON.stringify(removed)}`
         }));
 
+        let description = client.intlGet(guildId, 'wipeCleanupDoneDesc', removed);
+        if (removed.kept > 0) description += `\n${client.intlGet(guildId, 'wipeCleanupKept', { kept: removed.kept })}`;
         const done = {
             embeds: [DiscordEmbeds.getEmbed({
                 color: Constants.COLOR_ACTIVE,
                 title: client.intlGet(guildId, 'wipeCleanupDoneTitle'),
-                description: client.intlGet(guildId, 'wipeCleanupDoneDesc', removed)
+                description: description
             })],
             components: []
         };
@@ -1327,7 +1415,7 @@ module.exports = async (client, interaction) => {
         const ids = JSON.parse(interaction.customId.replace('TrackerDelete', ''));
         const tracker = instance.trackers[ids.trackerId];
 
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.canManage(interaction)) {
             interaction.deferUpdate();
             return;
         }

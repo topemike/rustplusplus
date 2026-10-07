@@ -28,7 +28,6 @@
 const Builder = require('@discordjs/builders');
 const Discord = require('discord.js');
 
-const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const ServerLifecycle = require('../util/serverLifecycle.js');
@@ -40,8 +39,7 @@ module.exports = {
 		return new Builder.SlashCommandBuilder()
 			.setName('limpieza')
 			.setDescription(client.intlGet(guildId, 'commandsCleanupDesc'))
-			/* Only shown to members with the Administrator permission */
-			.setDefaultMemberPermissions(Discord.PermissionFlagsBits.Administrator)
+			/* Visible to everyone; only administrators and the hoster can use it (client.canManage) */
 			.addSubcommand(s => s.setName('server').setDescription(client.intlGet(guildId, 'commandsCleanupOthersDesc')))
 			.addSubcommand(s => s.setName('todo').setDescription(client.intlGet(guildId, 'commandsCleanupAllDesc')));
 	},
@@ -55,7 +53,7 @@ module.exports = {
 		if (!await client.validatePermissions(interaction)) return;
 		await interaction.deferReply({ ephemeral: true });
 
-		if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+		if (!client.canManage(interaction)) {
 			await client.interactionEditReply(interaction,
 				DiscordEmbeds.getActionInfoEmbed(1, client.intlGet(guildId, 'missingPermission')));
 			return;

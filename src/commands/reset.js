@@ -67,7 +67,7 @@ module.exports = {
 
 		if (!await client.validatePermissions(interaction)) return;
 
-		if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+		if (!client.canManage(interaction)) {
 			const str = client.intlGet(interaction.guildId, 'missingPermission');
 			client.interactionReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
 			client.log(client.intlGet(null, 'warningCap'), str);

@@ -22,7 +22,7 @@ module.exports = {
     general: {
         language: process.env.RPP_LANGUAGE || 'en',
         pollingIntervalMs: process.env.RPP_POLLING_INTERVAL || 10000,
-        showCallStackError: process.env.RPP_LOG_CALL_STACK || false,
+        showCallStackError: ['true', '1', 'yes'].includes(`${process.env.RPP_LOG_CALL_STACK || ''}`.trim().toLowerCase()),
         reconnectIntervalMs: process.env.RPP_RECONNECT_INTERVAL || 15000,
         /* Time zone used for tracker schedules (IANA name, e.g. Europe/Madrid) */
         timezone: process.env.RPP_TIMEZONE || 'Europe/Madrid',
@@ -31,7 +31,7 @@ module.exports = {
         username: process.env.RPP_DISCORD_USERNAME || 'rustplusplus',
         clientId: process.env.RPP_DISCORD_CLIENT_ID || '',
         token: process.env.RPP_DISCORD_TOKEN || '',
-        needAdminPrivileges: process.env.RPP_NEED_ADMIN_PRIVILEGES || true, /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
+        needAdminPrivileges: !['false', '0', 'no'].includes(`${process.env.RPP_NEED_ADMIN_PRIVILEGES || ''}`.trim().toLowerCase()), /* No longer used: deleting is always for administrators and the current hoster (client.canManage) */
     },
     battlemetrics: {
         token: process.env.RPP_BATTLEMETRICS_TOKEN || ''
@@ -56,7 +56,7 @@ module.exports = {
     },
     raid: {
         /* Grouped raid alarms: reminder every N minutes while nobody acknowledges */
-        reminderMinutes: parseInt(process.env.RPP_RAID_REMINDER_MINUTES) || 5,
+        reminderMinutes: parseInt(process.env.RPP_RAID_REMINDER_MINUTES) || 2,
         /* The raid is considered over after N minutes without alarm triggers */
         quietMinutes: parseInt(process.env.RPP_RAID_QUIET_MINUTES) || 10,
         /* Minimum seconds between edits of the raid message */
@@ -67,11 +67,7 @@ module.exports = {
     baseWatch: {
         /* Tool Cupboard upkeep warnings (hours left), comma separated */
         upkeepWarnHours: (process.env.RPP_UPKEEP_WARN_HOURS || '3,1').split(',')
-            .map(h => parseFloat(h)).filter(h => h > 0),
-        /* Watched containers: alert when at least this % of the items disappears at once */
-        boxDropPercent: parseInt(process.env.RPP_BOX_DROP_PERCENT) || 30,
-        /* Only alert while every teammate is offline (teammates taking items is not an alert) */
-        boxAlertOnlyWhenTeamOffline: process.env.RPP_BOX_ALERT_ONLY_TEAM_OFFLINE !== 'false'
+            .map(h => parseFloat(h)).filter(h => h > 0)
     },
     deepSea: {
         /* Default Deep Sea cycle (learned per server from the open/closed marks) */
@@ -81,7 +77,7 @@ module.exports = {
         closedMaxMinutes: parseInt(process.env.RPP_DEEPSEA_CLOSED_MAX_MINUTES) || 150,
         /* While it can reopen at any moment: reminder every N minutes until the latest time */
         windowReminderMinutes: parseInt(process.env.RPP_DEEPSEA_WINDOW_REMINDER_MINUTES) || 30,
-        /* Warnings before closing (minutes); no message at the closing itself */
+        /* Warnings before closing (minutes); there is also one when it closes */
         closeWarnMinutes: (process.env.RPP_DEEPSEA_CLOSE_WARN_MINUTES || '10').split(',')
             .map(m => parseInt(m)).filter(m => m > 0),
         /* Warnings before opening, only when the server has a fixed cycle (minutes) */
@@ -105,9 +101,11 @@ module.exports = {
         sessionSecret: process.env.RPP_WEB_SESSION_SECRET || ''
     },
     backup: {
-        /* Daily backup of instances/ and credentials/ */
+        /* Daily backup of instances/ and credentials/, encrypted */
         enabled: process.env.RPP_BACKUP_ENABLED !== 'false',
         directory: process.env.RPP_BACKUP_DIR || 'logs/backups',
-        keepDays: parseInt(process.env.RPP_BACKUP_KEEP_DAYS) || 14
+        keepDays: parseInt(process.env.RPP_BACKUP_KEEP_DAYS) || 14,
+        /* Key to encrypt the backups. Empty: a random key is created in instances/backup.key */
+        key: process.env.RPP_BACKUP_KEY || ''
     }
 };

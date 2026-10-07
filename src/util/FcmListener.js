@@ -491,8 +491,15 @@ async function alarmRaidAlarm(client, guild, title, message, body) {
     }
 
     if (rustplus && (serverId === rustplus.serverId)) {
-        await DiscordMessages.sendMessage(guild.id, content, null, instance.channelId.base || instance.channelId.activity);
-        rustplus.sendInGameMessage(`${title}: ${message}`);
+        /* Grouped with the Smart Alarm raid message (one pinned message, reminders, end of raid) */
+        try {
+            await require('../handlers/raidHandler.js').onPluginAlarm(client, rustplus, guild.id, serverId, title, message);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Raid plugin alarm: ${e}`, 'error');
+            await DiscordMessages.sendMessage(guild.id, content, null, instance.channelId.base || instance.channelId.activity);
+            rustplus.sendInGameMessage(`${title}: ${message}`);
+        }
     }
 
     client.log(client.intlGet(null, 'infoCap'), `${title} ${message}`);
