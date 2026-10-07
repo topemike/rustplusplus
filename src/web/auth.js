@@ -177,9 +177,25 @@ function getSession(req) {
 
 /**
  *  Discord servers (where the bot is) that this user may see in the panel.
- *  Member of the server, and with the configured role if any (name or id).
+ *  Member of the server, not on the bot's blacklist, and able to see the bot's channels (or with
+ *  RPP_WEB_ROLE if it is set; Administrators skip that last check).
  *  @return {Array} [guildId]
  */
+function canSeeBot(guild, member, instance) {
+    const role = Config.web.role;
+    if (role) return member.roles.cache.some(r => r.name === role || r.id === role);
+
+    const channelId = instance && instance.channelId ? instance.channelId.information : null;
+    const channel = channelId && guild.channels && guild.channels.cache ? guild.channels.cache.get(channelId) : null;
+    if (channel && typeof channel.permissionsFor === 'function') {
+        const perms = channel.permissionsFor(member);
+        return !!perms && perms.has(require('discord.js').PermissionFlagsBits.ViewChannel);
+    }
+    /* Channels not created yet: the bot's /role, or any member if there is none */
+    if (instance && instance.role) return member.roles.cache.some(r => r.id === instance.role || r.name === instance.role);
+    return true;
+}
+
 async function allowedGuilds(client, userId) {
     const cached = accessCache.get(userId);
     if (cached && Date.now() - cached.at < ACCESS_CACHE_MS) return cached.guilds;
@@ -193,16 +209,17 @@ async function allowedGuilds(client, userId) {
         catch (e) {
             continue;   /* not a member */
         }
-        /* Same people who can see the bot channels: the panel role, or else the bot's /role, and
-           never someone on the bot's blacklist (Discord administrators always get in) */
+        /* Never someone on the bot's blacklist, administrators included (an admin can take
+           themselves off it). Then: the panel role if RPP_WEB_ROLE is set; if not, the same people
+           who can see the bot's channels (#information), which follows the bot's /role setup. */
+        const Discord = require('discord.js');
         let instance = null;
         try { instance = client.getInstance(guild.id); } catch (e) { instance = null; }
-        const isAdmin = member.permissions && member.permissions.has &&
-            member.permissions.has(require('discord.js').PermissionFlagsBits.Administrator);
-        const role = Config.web.role || (instance && instance.role) || null;
-        if (!isAdmin && role && !member.roles.cache.some(r => r.name === role || r.id === role)) continue;
-        if (!isAdmin && instance && instance.blacklist && Array.isArray(instance.blacklist.discordIds) &&
+        if (instance && instance.blacklist && Array.isArray(instance.blacklist.discordIds) &&
             instance.blacklist.discordIds.includes(member.id)) continue;
+        const isAdmin = member.permissions && member.permissions.has &&
+            member.permissions.has(Discord.PermissionFlagsBits.Administrator);
+        if (!isAdmin && !canSeeBot(guild, member, instance)) continue;
         guilds.push(guild.id);
     }
     accessCache.set(userId, { at: Date.now(), guilds: guilds });
