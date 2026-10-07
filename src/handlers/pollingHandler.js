@@ -37,6 +37,16 @@ module.exports = {
         /* Poll information such as info, mapMarkers, teamInfo and time */
         let info = await rustplus.getInfoAsync();
         if (!(await rustplus.isResponseValid(info))) return;
+
+        /* Device "not found" notices held back during a restart: send the ones still missing */
+        try {
+            await require('../util/deviceNotices.js').flush(client, rustplus.guildId, async (type, serverId, entityId) => {
+                const fn = { switch: 'sendSmartSwitchNotFoundMessage', alarm: 'sendSmartAlarmNotFoundMessage',
+                    storageMonitor: 'sendStorageMonitorNotFoundMessage' }[type];
+                await require('../discordTools/discordMessages.js')[fn](rustplus.guildId, serverId, entityId, true);
+            });
+        }
+        catch (e) { /* not critical */ }
         let mapMarkers = await rustplus.getMapMarkersAsync();
         if (!(await rustplus.isResponseValid(mapMarkers))) return;
         let teamInfo = await rustplus.getTeamInfoAsync();
