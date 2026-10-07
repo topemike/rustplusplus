@@ -35,7 +35,6 @@ const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
-const InstanceUtils = require('../util/instanceUtils.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const { resolveActionTargets, describeActionTargets } = require('../util/raidTargets.js');
 const Timer = require('../util/timer');
@@ -157,24 +156,9 @@ function raidChannel(instance) {
     return instance.channelId.base || instance.channelId.activity;
 }
 
-/**
- *  Who to ping: the Discord users linked (via /credentials) to the members of the in-game team,
- *  else the bot role if one is set, else @everyone.
- */
-function getMention(client, guildId) {
-    const instance = client.getInstance(guildId);
-    const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
-    try {
-        const credentials = InstanceUtils.readCredentialsFile(guildId) || {};
-        const teamSteamIds = rustplus && rustplus.team && Array.isArray(rustplus.team.players) ?
-            rustplus.team.players.map(p => `${p.steamId}`) : [];
-        const users = [...new Set(teamSteamIds
-            .map(id => credentials[id] && credentials[id].discord_user_id ? credentials[id].discord_user_id : null)
-            .filter(Boolean))];
-        if (users.length > 0) return users.map(u => `<@${u}>`).join(' ');
-    }
-    catch (e) { /* fall back below */ }
-    return instance.role ? `<@&${instance.role}>` : '@everyone';
+/* Raid pings go to the whole Discord channel */
+function getMention() {
+    return '@everyone';
 }
 
 /* Pin the raid message while the raid is active and nobody acknowledged it */
