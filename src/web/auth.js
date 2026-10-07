@@ -92,7 +92,9 @@ function parseCookies(req) {
     for (const part of `${req.headers.cookie || ''}`.split(';')) {
         const index = part.indexOf('=');
         if (index < 0) continue;
-        cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+        /* A malformed value (e.g. a lone %) is ignored instead of failing the whole request */
+        try { cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim()); }
+        catch (e) { /* skip this cookie */ }
     }
     return cookies;
 }
