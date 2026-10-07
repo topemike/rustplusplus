@@ -712,6 +712,7 @@
     "raidActiveDesc": "💥 {count} activaciones · empezó {started} · última {last}",
     "raidActiveTitle": "🚨 ¡RAID! {server}",
     "raidAlarms": "Alarmas: {alarms}",
+    "raidAlarmsLost": "La alarma ha dejado de responder: probablemente la han destruido.",
     "raidEndedDesc": "Sin alarmas desde hace un rato. Duración: {duration} · {count} activaciones.",
     "raidEndedInGame": "Raid terminado: {count} activaciones de alarma.",
     "raidEndedTitle": "✅ Raid terminado",
