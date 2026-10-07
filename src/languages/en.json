@@ -1020,5 +1020,6 @@
     "serverConnectPurgeDone": "Connected to {server}. Deleted {servers} servers and {trackers} trackers from before.",
     "summaryDeepSeaTitle": "🌊 Deep Sea",
     "summaryDeepSeaFixed": "Open {open}, then closed {closed} until the next one (fixed cycle).",
-    "summaryDeepSeaRandom": "Open {open}, then closed between {closedMin} and {closedMax} until the next one."
+    "summaryDeepSeaRandom": "Open {open}, then closed between {closedMin} and {closedMax} until the next one.",
+    "raidReminderEndedTitle": "🚨 There was a raid and nobody has seen it yet"
 }

@@ -20,9 +20,10 @@
 
 /*
  *  Raid incidents: groups Smart Alarm triggers into a single Discord message.
- *  - First trigger: one message (with @everyone if the alarm has it) and an "I'm on it" button.
+ *  - First trigger: one pinned message with @everyone and an "I'm on it" button.
  *  - Further triggers only update that message (counter, last trigger), throttled.
- *  - If nobody acknowledges, one reminder every N minutes while alarms keep triggering.
+ *  - Until someone presses the button: a reminder with @everyone every N minutes, even after the
+ *    raid is over (asleep people must wake up), and the message stays pinned.
  *  - After M minutes without triggers the raid is considered over and a summary is posted.
  *  - Alarm actions: switches / switch groups turned on when the alarm triggers, with a hold
  *    time during which automatic switch modes do not turn them off.
@@ -174,7 +175,7 @@ function getIncidentEmbed(client, guildId, incident, now = Date.now()) {
     if (incident.acknowledgedBy) {
         description += `\n${client.intlGet(guildId, 'raidAcknowledgedBy', { user: `<@${incident.acknowledgedBy}>` })}`;
     }
-    else if (!incident.endedAt) {
+    else {
         description += `\n${client.intlGet(guildId, 'raidNotAcknowledged', {
             minutes: Math.round(s.reminderMs / 60000)
         })}`;
@@ -221,7 +222,7 @@ function getAckButton(client, guildId, incident) {
             .setLabel(client.intlGet(guildId, 'raidAcknowledgeCap'))
             .setStyle(Discord.ButtonStyle.Primary)
             .setEmoji('\u{1F440}')
-            .setDisabled(!!incident.acknowledgedBy || !!incident.endedAt));
+            .setDisabled(!!incident.acknowledgedBy));    /* still usable after the raid ends */
 }
 
 async function sendOrEditIncident(client, guildId, incident, mention) {
@@ -240,13 +241,14 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
                 embeds: [getIncidentEmbed(client, guildId, incident)],
                 components: [getAckButton(client, guildId, incident)]
             };
-            if (mention && incident.everyone) content.content = getMention(client, guildId);
+            if (mention) content.content = getMention(client, guildId);
             mention = false;
 
             if (!incident.channelId) incident.channelId = raidChannel(instance);
             const message = await DiscordMessages.sendMessage(guildId, content, incident.messageId, incident.channelId);
             if (message && message.id) incident.messageId = message.id;
-            await setPinned(client, guildId, incident, !incident.endedAt && !incident.acknowledgedBy);
+            /* Pinned until someone has seen it, even after the raid ends */
+            await setPinned(client, guildId, incident, !incident.acknowledgedBy);
             incident.lastEditAt = Date.now();
             incident.dirty = false;
         } while (incident.resend);
@@ -259,10 +261,10 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
 async function sendReminder(client, guildId, incident) {
     const instance = client.getInstance(guildId);
     const content = {
-        content: incident.everyone ? getMention(client, guildId) : undefined,
+        content: getMention(client, guildId),
         embeds: [DiscordEmbeds.getEmbed({
             color: Constants.COLOR_INACTIVE,
-            title: client.intlGet(guildId, 'raidReminderTitle'),
+            title: client.intlGet(guildId, incident.endedAt ? 'raidReminderEndedTitle' : 'raidReminderTitle'),
             description: client.intlGet(guildId, 'raidReminderDesc', {
                 count: incident.count,
                 started: `<t:${Math.floor(incident.startedAt / 1000)}:R>`
@@ -372,15 +374,15 @@ async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isS
 async function tick(client, now = Date.now()) {
     const s = settings();
     for (const [guildId, incident] of Object.entries(incidents)) {
-        if (incident.endedAt) continue;
+        /* A finished raid that somebody has seen needs nothing more */
+        if (incident.endedAt && incident.acknowledgedBy) continue;
         try {
-            if (now - incident.lastTriggerAt >= s.quietMs) {
+            if (!incident.endedAt && now - incident.lastTriggerAt >= s.quietMs) {
                 await endIncident(client, guildId, incident, now);
-                continue;
             }
 
-            if (!incident.acknowledgedBy && now - incident.lastReminderAt >= s.reminderMs &&
-                incident.lastTriggerAt > incident.lastReminderAt) {
+            /* Nobody has seen it: @everyone again every few minutes until someone presses the button */
+            if (!incident.acknowledgedBy && now - incident.lastReminderAt >= s.reminderMs) {
                 incident.lastReminderAt = now;
                 await sendReminder(client, guildId, incident);
             }
@@ -424,7 +426,7 @@ async function onAlarmLost(client, guildId, entityId, now = Date.now()) {
 async function acknowledge(client, interaction) {
     const guildId = interaction.guildId;
     const incident = incidents[guildId];
-    if (!incident || incident.endedAt || incident.acknowledgedBy ||
+    if (!incident || incident.acknowledgedBy ||
         (interaction.message && incident.messageId && interaction.message.id !== incident.messageId)) {
         /* Old raid message (e.g. the bot restarted during the raid): unpin it and disable the button */
         try {
