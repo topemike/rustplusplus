@@ -19,13 +19,14 @@
 */
 
 /*
- *  Upkeep board in the information channel: every Tool Cupboard with a Storage Monitor, with the
+ *  Upkeep board in #base (or #information if #base does not exist): every Tool Cupboard with a Storage Monitor, with the
  *  time left in hours and minutes (the message is edited once a minute) and the exact date.
  */
 
 const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const DiscordTools = require('../discordTools/discordTools.js');
 const UpkeepRates = require('../util/upkeepRates.js');
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -68,7 +69,9 @@ function line(client, guildId, tc, now) {
     if (!tc.expiry) return client.intlGet(guildId, 'upkeepBoardDecaying', { name: tc.name, where: where });
     const left = tc.expiry * 1000 - now;
     const icon = left < 6 * HOUR_MS ? '\u{1F534}' : (left < 24 * HOUR_MS ? '\u{1F7E1}' : '\u{1F7E2}');
-    const advice = left < 24 * HOUR_MS ? UpkeepRates.shortAdvice(client, guildId, tc.breakdown) : null;
+    /* Every TC: which material runs out first and what to add (or that it is still learning) */
+    const advice = tc.breakdown ? UpkeepRates.shortAdvice(client, guildId, tc.breakdown) :
+        client.intlGet(guildId, 'upkeepBoardLearning');
     return client.intlGet(guildId, 'upkeepBoardLine', {
         icon: icon, name: tc.name, where: where,
         countdown: `\`${hoursMinutes(left)}\``, date: `<t:${tc.expiry}:f>`
@@ -97,23 +100,51 @@ function signature(tcs, now) {
         tc.expiry ? (tc.expiry * 1000 - now < 6 * HOUR_MS ? 2 : (tc.expiry * 1000 - now < 24 * HOUR_MS ? 1 : 0)) : -1]));
 }
 
+/* The board lives in #base (with the upkeep alerts); #information if #base does not exist */
+function boardChannel(instance) {
+    return instance.channelId.base || instance.channelId.information || null;
+}
+
 module.exports = {
     handler: async function (rustplus, client, now = Date.now()) {
         const guildId = rustplus.guildId;
         const instance = client.getInstance(guildId);
-        if (!instance.channelId || !instance.channelId.information) return;
-        if (!instance.informationMessageId.hasOwnProperty('upkeep')) instance.informationMessageId.upkeep = null;
+        if (!instance.channelId) return;
+        const channelId = boardChannel(instance);
+        if (!channelId) return;
+        if (!instance.upkeepBoard) instance.upkeepBoard = { channelId: null, messageId: null };
+
+        /* Moved to another channel (e.g. #base was created): remove the old board */
+        const oldInfoId = instance.informationMessageId ? instance.informationMessageId.upkeep : null;
+        if (oldInfoId && channelId !== instance.channelId.information) {
+            try { await DiscordTools.deleteMessageById(guildId, instance.channelId.information, oldInfoId); }
+            catch (e) { /* already gone */ }
+            instance.informationMessageId.upkeep = null;
+            client.setInstance(guildId, instance);
+        }
+        if (instance.upkeepBoard.channelId !== channelId) {
+            if (instance.upkeepBoard.messageId && instance.upkeepBoard.channelId) {
+                try { await DiscordTools.deleteMessageById(guildId, instance.upkeepBoard.channelId, instance.upkeepBoard.messageId); }
+                catch (e) { /* already gone */ }
+            }
+            instance.upkeepBoard = { channelId: channelId, messageId: null };
+            client.setInstance(guildId, instance);
+            delete signatures[guildId];
+        }
 
         const tcs = getTcList(instance, rustplus);
         const sig = signature(tcs, now);
-        if (signatures[guildId] === sig && instance.informationMessageId.upkeep !== null) return;
+        if (signatures[guildId] === sig && instance.upkeepBoard.messageId !== null) return;
 
         const message = await DiscordMessages.sendMessage(guildId, getContent(client, guildId, tcs, now),
-            instance.informationMessageId.upkeep, instance.channelId.information);
+            instance.upkeepBoard.messageId, channelId);
         signatures[guildId] = sig;
-        if (message && message.id && message.id !== instance.informationMessageId.upkeep) {
-            instance.informationMessageId.upkeep = message.id;
+        if (message && message.id && message.id !== instance.upkeepBoard.messageId) {
+            instance.upkeepBoard.messageId = message.id;
             client.setInstance(guildId, instance);
+            /* New board message: pin it so the alerts below do not bury it */
+            try { if (typeof message.pin === 'function') await message.pin(); }
+            catch (e) { /* missing permission: not critical */ }
         }
     },
 

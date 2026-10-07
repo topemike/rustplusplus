@@ -940,6 +940,7 @@
     "upkeepBoardDecaying": "❌ **{name}**{where} · no upkeep, the base is decaying!",
     "upkeepBoardEmpty": "No Tool Cupboard is being watched. Put a Storage Monitor on each TC and pair it to see its upkeep countdown here.",
     "upkeepBoardFooter": "Updated every minute · 🟢 >24h · 🟡 <24h · 🔴 <6h",
+    "upkeepBoardLearning": "Upkeep per material: learning…",
     "upkeepBoardLine": "{icon} **{name}**{where} · {countdown} left · {date}",
     "upkeepBoardNoData": "❔ **{name}**{where} · no data (storage monitor not responding)",
     "upkeepMat_wood": "wood",
