@@ -284,7 +284,8 @@ module.exports = {
             content: entity.everyone ? '@everyone' : ''
         }
 
-        await module.exports.sendMessage(guildId, content, null, instance.channelId.activity);
+        /* Base alarms go to #base (#activity if it does not exist) */
+        await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
     sendServerChangeStateMessage: async function (guildId, serverId, state) {

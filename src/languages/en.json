@@ -712,6 +712,7 @@
     "raidActiveDesc": "💥 {count} triggers · started {started} · last {last}",
     "raidActiveTitle": "🚨 RAID! {server}",
     "raidAlarms": "Alarms: {alarms}",
+    "raidAlarmsLost": "The alarm stopped responding: it was probably destroyed.",
     "raidEndedDesc": "No alarms for a while. Duration: {duration} · {count} triggers.",
     "raidEndedInGame": "Raid over: {count} alarm triggers.",
     "raidEndedTitle": "✅ Raid over",
