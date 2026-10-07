@@ -288,7 +288,8 @@ async function setupNotificationSettings(client, guildId, channel) {
         await client.messageSend(channel, {
             embeds: [DiscordEmbeds.getEmbed({
                 color: Constants.COLOR_SETTINGS,
-                title: client.intlGet(guildId, setting),
+                /* {grids}: the heli distance comes from the code, not written by hand in the text */
+                title: client.intlGet(guildId, setting, { grids: Constants.HELI_NEAR_BASE_GRIDS }),
                 thumbnail: `attachment://${instance.notificationSettings[setting].image}`
             })],
             components: [

@@ -56,8 +56,8 @@ const OIL_RIG_CRATE_DISTANCE = 150;
 const CHINOOK_RECENT_MS = 3 * MINUTE_MS;
 /* Warn when the Patrol Helicopter comes this close to the base (in grids), and
    again when it moves away past the leave distance (a margin, so it does not flap). */
-const NEAR_BASE_GRIDS = 3;
-const LEAVE_BASE_GRIDS = 3.5;
+const NEAR_BASE_GRIDS = Constants.HELI_NEAR_BASE_GRIDS;
+const LEAVE_BASE_GRIDS = Constants.HELI_LEAVE_BASE_GRIDS;
 const BASE_CLEAR_WORDS = ['clear', 'remove', 'delete', 'borrar', 'quitar'];
 const BASE_INFO_WORDS = ['info', 'status', 'estado', '?'];
 

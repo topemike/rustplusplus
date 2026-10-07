@@ -79,7 +79,7 @@
     "heliLeftBase": "El Patrol Heli se aleja de la base ({location}).",
     "heliNearBase": "🚁 ¡Patrol Heli a {distance} cuadrículas de la base ({location})!",
     "heliNearBaseApproaching": "🚁 ¡Patrol Heli a {distance} cuadrículas de la base ({location}) y viene hacia vosotros!",
-    "heliNearBaseSetting": "Cuando el Patrol Heli esté a menos de 3 cuadrículas de la base (!base), envía una notificación.",
+    "heliNearBaseSetting": "Cuando el Patrol Heli esté a menos de {grids} cuadrículas de la base (!base), envía una notificación.",
     "bradleyApc": "Bradley",
     "bradleyApcDestroyed": "La Bradley ha sido destruida en {location}. Volverá en unos {time}.",
     "bradleyApcDestroyedAgo": "La Bradley fue destruida hace {time}. Volverá en unos {time2}.",

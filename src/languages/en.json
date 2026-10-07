@@ -79,7 +79,7 @@
     "heliLeftBase": "Patrol Helicopter moved away from your base ({location}).",
     "heliNearBase": "🚁 Patrol Helicopter is {distance} grids from your base ({location})!",
     "heliNearBaseApproaching": "🚁 Patrol Helicopter is {distance} grids from your base ({location}) and coming your way!",
-    "heliNearBaseSetting": "When Patrol Helicopter comes within 3 grids of the base (!base), send a notification.",
+    "heliNearBaseSetting": "When Patrol Helicopter comes within {grids} grids of the base (!base), send a notification.",
     "bradleyApc": "Bradley APC",
     "bradleyApcDestroyed": "Bradley APC was destroyed at {location}. Expected back in {time}.",
     "bradleyApcDestroyedAgo": "Bradley APC was destroyed {time} ago. Expected back in {time2}.",
