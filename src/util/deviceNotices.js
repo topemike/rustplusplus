@@ -19,12 +19,15 @@
 */
 
 /*
- *  "Device not found" notices are held back while the server is down, reconnecting or has just
- *  come back (a restarting server answers that nothing exists). After the grace period, the ones
- *  whose device still does not respond are sent; the rest are dropped.
+ *  "Device not found" notices are never sent on a single failed answer. They are held and the
+ *  device is checked again while the server is ON: connected and answering. A notice goes out only
+ *  when the server clearly answers "not found" several times in a row. A timeout, a lost
+ *  connection or a server that does not come back counts for nothing, so a restart (or a server
+ *  that stays down) never sends false notices. Devices that answer again are dropped silently.
  */
 
-const GRACE_MS = 10 * 60 * 1000;
+const CHECK_EVERY_MS = 30 * 1000;   /* between two checks of the same device */
+const CONFIRMATIONS = 3;            /* "not found" answers in a row needed to send the notice */
 
 /* type -> list in the server object */
 const LISTS = { switch: 'switches', alarm: 'alarms', storageMonitor: 'storageMonitors' };
@@ -35,42 +38,66 @@ function pendingFor(client, guildId) {
     return client.pendingDeviceNotices[guildId];
 }
 
-/* True when the connection is not stable enough to trust a "not found" answer */
-function inGrace(client, guildId, now = Date.now()) {
-    const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
-    if (!rustplus || !rustplus.isOperational) return true;
-    if (client.rustplusReconnecting && client.rustplusReconnecting[guildId]) return true;
-    return !rustplus.operationalSince || now - rustplus.operationalSince < GRACE_MS;
+/* The server answered: does the answer say the device does not exist? */
+function answeredNotFound(response) {
+    return !!response && typeof response === 'object' && response.error === 'not_found';
+}
+function answeredFound(response) {
+    return !!response && typeof response === 'object' && !response.error && !!response.entityInfo;
 }
 
 module.exports = {
-    GRACE_MS: GRACE_MS,
-    inGrace: inGrace,
+    CHECK_EVERY_MS: CHECK_EVERY_MS,
+    CONFIRMATIONS: CONFIRMATIONS,
 
     /**
-     *  @return {boolean} true if the notice must be sent now, false if it was held back.
+     *  Holds the notice until the device is confirmed missing with the server on.
+     *  @return {boolean} always false: the notice is sent later by verify() if confirmed.
      */
-    shouldSendNow: function (client, guildId, type, serverId, entityId, now = Date.now()) {
-        if (!inGrace(client, guildId, now)) return true;
-        pendingFor(client, guildId)[`${type}:${serverId}:${entityId}`] = { type, serverId, entityId };
+    shouldSendNow: function (client, guildId, type, serverId, entityId) {
+        const pending = pendingFor(client, guildId);
+        const key = `${type}:${serverId}:${entityId}`;
+        if (!pending[key]) pending[key] = { type, serverId, entityId, misses: 0, lastCheck: 0, session: null };
         return false;
     },
 
     /**
-     *  Called periodically: after the grace period, sends the held-back notices whose device still
-     *  does not respond. `send(type, serverId, entityId)` sends one.
+     *  Called on every poll, only once the server has answered (it is on). Checks the held devices
+     *  again and calls `confirmed(type, serverId, entityId)` for the ones the server keeps
+     *  reporting as not found.
      */
-    flush: async function (client, guildId, send, now = Date.now()) {
+    verify: async function (client, rustplus, confirmed, now = Date.now()) {
+        const guildId = rustplus.guildId;
         const pending = pendingFor(client, guildId);
-        if (Object.keys(pending).length === 0 || inGrace(client, guildId, now)) return 0;
+        if (Object.keys(pending).length === 0 || !rustplus.isOperational) return 0;
         const instance = client.getInstance(guildId);
         let sent = 0;
         for (const [key, p] of Object.entries(pending)) {
-            delete pending[key];
+            /* Another server, or the device was removed from the bot: forget it */
             const server = instance.serverList[p.serverId];
             const entity = server && server[LISTS[p.type]] ? server[LISTS[p.type]][p.entityId] : null;
-            if (!entity || entity.reachable !== false) continue;
-            await send(p.type, p.serverId, p.entityId);
+            if (p.serverId !== rustplus.serverId || !entity) { delete pending[key]; continue; }
+
+            /* New connection (the server went down meanwhile): start counting again */
+            if (p.session !== rustplus.operationalSince) {
+                p.session = rustplus.operationalSince;
+                p.misses = 0;
+                p.lastCheck = 0;
+            }
+            if (now - p.lastCheck < CHECK_EVERY_MS) continue;
+            p.lastCheck = now;
+
+            let response;
+            try { response = await rustplus.getEntityInfoAsync(p.entityId); }
+            catch (e) { response = undefined; }
+
+            if (answeredFound(response)) { delete pending[key]; continue; }
+            if (!answeredNotFound(response)) continue;    /* timeout / no answer: proves nothing */
+
+            p.misses++;
+            if (p.misses < CONFIRMATIONS) continue;
+            delete pending[key];
+            await confirmed(p.type, p.serverId, p.entityId);
             sent++;
         }
         return sent;

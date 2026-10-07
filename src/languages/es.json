@@ -999,5 +999,10 @@
     "wipeDetected": "¡Wipe detectado!",
     "yield": "Yield",
     "youAreAlreadyLeader": "Ya eres líder.",
-    "youAreNotPairedWithServer": "El comando líder no funciona porque no está emparejado con el servidor."
+    "youAreNotPairedWithServer": "El comando líder no funciona porque no está emparejado con el servidor.",
+    "cleanupOutdated": "Este botón está caducado (el bot está en otro server o ese server ya no existe). No se ha borrado nada.",
+    "wipeCleanupWorking": "Limpiando los dispositivos que ya no existen…",
+    "trackerPlayerLookupFailed": "Ahora mismo no se puede buscar al jugador (Steam o BattleMetrics no responden). Prueba en un momento.",
+    "trackerPlayerRemoved": "Quitado del tracker: {name}.",
+    "trackerPlayerNotInTracker": "Ningún jugador de este tracker coincide con \"{id}\". Usa el Steam ID, un enlace de Steam o BattleMetrics, el id de BattleMetrics o el nombre exacto."
 }

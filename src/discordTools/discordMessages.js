@@ -231,7 +231,7 @@ module.exports = {
     },
 
     sendStorageMonitorNotFoundMessage: async function (guildId, serverId, entityId, force = false) {
-        /* Not while the server is down or has just come back: retried later if still missing */
+        /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'storageMonitor', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].storageMonitors[entityId];
@@ -248,7 +248,7 @@ module.exports = {
     },
 
     sendSmartSwitchNotFoundMessage: async function (guildId, serverId, entityId, force = false) {
-        /* Not while the server is down or has just come back: retried later if still missing */
+        /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'switch', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].switches[entityId];
@@ -264,7 +264,7 @@ module.exports = {
     },
 
     sendSmartAlarmNotFoundMessage: async function (guildId, serverId, entityId, force = false) {
-        /* Not while the server is down or has just come back: retried later if still missing */
+        /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'alarm', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];

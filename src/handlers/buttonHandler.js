@@ -1178,6 +1178,19 @@ module.exports = async (client, interaction) => {
             return;
         }
 
+        /* Old button: the bot is now on another server, or that server no longer exists.
+           Running it would delete the server the bot is connected to. */
+        if (ids.serverId !== instance.activeServer || !instance.serverList[ids.serverId]) {
+            await client.interactionUpdate(interaction, {
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_DEFAULT,
+                    description: client.intlGet(guildId, 'cleanupOutdated')
+                })],
+                components: []
+            });
+            return;
+        }
+
         await client.interactionUpdate(interaction, {
             embeds: [DiscordEmbeds.getEmbed({
                 color: Constants.COLOR_DEFAULT,
@@ -1209,6 +1222,26 @@ module.exports = async (client, interaction) => {
             return;
         }
 
+        if (!instance.serverList[ids.serverId]) {
+            await client.interactionUpdate(interaction, {
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_DEFAULT,
+                    description: client.intlGet(guildId, 'cleanupOutdated')
+                })],
+                components: []
+            });
+            return;
+        }
+
+        /* Answer first: Discord gives only 3 seconds and the cleanup can take longer */
+        await client.interactionUpdate(interaction, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_DEFAULT,
+                description: client.intlGet(guildId, 'wipeCleanupWorking')
+            })],
+            components: []
+        });
+
         const removed = await require('../util/serverLifecycle.js').cleanupUnreachableDevices(
             client, guildId, ids.serverId);
 
@@ -1217,14 +1250,19 @@ module.exports = async (client, interaction) => {
             value: `wipe cleanup ${JSON.stringify(removed)}`
         }));
 
-        await client.interactionUpdate(interaction, {
+        const done = {
             embeds: [DiscordEmbeds.getEmbed({
                 color: Constants.COLOR_ACTIVE,
                 title: client.intlGet(guildId, 'wipeCleanupDoneTitle'),
                 description: client.intlGet(guildId, 'wipeCleanupDoneDesc', removed)
             })],
             components: []
-        });
+        };
+        try { await interaction.editReply(done); }
+        catch (e) {
+            /* The message was in #base, which the cleanup empties: send the result to #activity */
+            await DiscordMessages.sendMessage(guildId, done, null, instance.channelId.activity);
+        }
     }
     else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerSchedule')) {
         const ids = JSON.parse(interaction.customId.replace('TrackerSchedule', ''));

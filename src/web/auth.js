@@ -193,8 +193,16 @@ async function allowedGuilds(client, userId) {
         catch (e) {
             continue;   /* not a member */
         }
-        const role = Config.web.role;
-        if (role && !member.roles.cache.some(r => r.name === role || r.id === role)) continue;
+        /* Same people who can see the bot channels: the panel role, or else the bot's /role, and
+           never someone on the bot's blacklist (Discord administrators always get in) */
+        let instance = null;
+        try { instance = client.getInstance(guild.id); } catch (e) { instance = null; }
+        const isAdmin = member.permissions && member.permissions.has &&
+            member.permissions.has(require('discord.js').PermissionFlagsBits.Administrator);
+        const role = Config.web.role || (instance && instance.role) || null;
+        if (!isAdmin && role && !member.roles.cache.some(r => r.name === role || r.id === role)) continue;
+        if (!isAdmin && instance && instance.blacklist && Array.isArray(instance.blacklist.discordIds) &&
+            instance.blacklist.discordIds.includes(member.id)) continue;
         guilds.push(guild.id);
     }
     accessCache.set(userId, { at: Date.now(), guilds: guilds });

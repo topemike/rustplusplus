@@ -138,6 +138,7 @@ async function resolve(client, bmInstance, raw) {
 
 module.exports = {
     parseInput: parseInput,
+    steamIdFromVanity: steamIdFromVanity,
     resolve: resolve,
     searchBattlemetrics: searchBattlemetrics
 };

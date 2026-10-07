@@ -79,7 +79,7 @@ async function runAlarmActions(client, rustplus, guildId, serverId, alarm, now =
 
     for (const groupId of alarm.actions.groups || []) {
         if (!server.switchGroups[groupId]) continue;
-        await SmartSwitchGroupHandler.TurnOnOffGroup(client, rustplus, guildId, serverId, groupId, true);
+        await SmartSwitchGroupHandler.TurnOnOffGroup(client, rustplus, guildId, serverId, groupId, true, false);
     }
     for (const entityId of alarm.actions.switches || []) {
         const sw = client.getInstance(guildId).serverList[serverId].switches[entityId];
@@ -186,19 +186,35 @@ function getAckButton(client, guildId, incident) {
 }
 
 async function sendOrEditIncident(client, guildId, incident, mention) {
-    const instance = client.getInstance(guildId);
-    const content = {
-        embeds: [getIncidentEmbed(client, guildId, incident)],
-        components: [getAckButton(client, guildId, incident)]
-    };
-    if (mention && incident.everyone) content.content = getMention(client, guildId);
+    /* One send at a time: otherwise two messages could be created for the same raid */
+    if (incident.sending) {
+        incident.resend = true;
+        incident.dirty = true;
+        return;
+    }
+    incident.sending = true;
+    try {
+        do {
+            incident.resend = false;
+            const instance = client.getInstance(guildId);
+            const content = {
+                embeds: [getIncidentEmbed(client, guildId, incident)],
+                components: [getAckButton(client, guildId, incident)]
+            };
+            if (mention && incident.everyone) content.content = getMention(client, guildId);
+            mention = false;
 
-    if (!incident.channelId) incident.channelId = raidChannel(instance);
-    const message = await DiscordMessages.sendMessage(guildId, content, incident.messageId, incident.channelId);
-    if (message && message.id) incident.messageId = message.id;
-    await setPinned(client, guildId, incident, !incident.endedAt && !incident.acknowledgedBy);
-    incident.lastEditAt = Date.now();
-    incident.dirty = false;
+            if (!incident.channelId) incident.channelId = raidChannel(instance);
+            const message = await DiscordMessages.sendMessage(guildId, content, incident.messageId, incident.channelId);
+            if (message && message.id) incident.messageId = message.id;
+            await setPinned(client, guildId, incident, !incident.endedAt && !incident.acknowledgedBy);
+            incident.lastEditAt = Date.now();
+            incident.dirty = false;
+        } while (incident.resend);
+    }
+    finally {
+        incident.sending = false;
+    }
 }
 
 async function sendReminder(client, guildId, incident) {
@@ -231,7 +247,8 @@ async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, n
     const alarm = server.alarms[entityId];
 
     let incident = incidents[guildId];
-    const isNew = !incident || incident.endedAt;
+    /* A raid of another server (the bot changed server) is not continued */
+    const isNew = !incident || incident.endedAt || incident.serverId !== serverId;
     if (isNew) {
         incident = {
             serverId: serverId,
@@ -261,6 +278,14 @@ async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, n
     incident.alarms[entityId].count++;
     incident.dirty = true;
 
+    /* The alert first (with the mention), the actions after: they can take a few seconds */
+    if (isNew) {
+        await sendOrEditIncident(client, guildId, incident, true);
+        if (rustplus && instance.generalSettings.smartAlarmNotifyInGame) {
+            rustplus.sendInGameMessage(`${alarm.name}: ${alarm.message}`);
+        }
+    }
+
     /* Alarm actions (rate limited) */
     if (alarm.actions && now - incident.lastActionAt >= ACTION_INTERVAL_MS) {
         incident.lastActionAt = now;
@@ -277,13 +302,8 @@ async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, n
         catch (e) {
             client.log(client.intlGet(null, 'errorCap'), `Alarm actions failed: ${e}`, 'error');
         }
-    }
-
-    if (isNew) {
-        await sendOrEditIncident(client, guildId, incident, true);
-        if (rustplus && instance.generalSettings.smartAlarmNotifyInGame) {
-            rustplus.sendInGameMessage(`${alarm.name}: ${alarm.message}`);
-        }
+        /* Show what was done */
+        if (incident.actionsText) incident.dirty = true;
     }
 }
 
@@ -345,8 +365,22 @@ async function onAlarmLost(client, guildId, entityId, now = Date.now()) {
 async function acknowledge(client, interaction) {
     const guildId = interaction.guildId;
     const incident = incidents[guildId];
-    if (!incident || incident.endedAt || incident.acknowledgedBy) {
-        try { await interaction.deferUpdate(); } catch (e) { }
+    if (!incident || incident.endedAt || incident.acknowledgedBy ||
+        (interaction.message && incident.messageId && interaction.message.id !== incident.messageId)) {
+        /* Old raid message (e.g. the bot restarted during the raid): unpin it and disable the button */
+        try {
+            if (!interaction.message) throw new Error("no message");
+            if (interaction.message.pinned) await interaction.message.unpin();
+            const rows = interaction.message.components.map(row => {
+                const r = Discord.ActionRowBuilder.from(row);
+                r.setComponents(row.components.map(c => Discord.ButtonBuilder.from(c).setDisabled(true)));
+                return r;
+            });
+            await interaction.update({ components: rows });
+        }
+        catch (e) {
+            try { await interaction.deferUpdate(); } catch (e2) { }
+        }
         return;
     }
     incident.acknowledgedBy = interaction.user.id;
@@ -359,7 +393,13 @@ async function acknowledge(client, interaction) {
     incident.dirty = false;
 }
 
+/* The raid messages were deleted (cleanup): forget the raid in progress */
+function forget(guildId) {
+    delete incidents[guildId];
+}
+
 module.exports = {
+    forget: forget,
     onAlarmTriggered: onAlarmTriggered,
     tick: tick,
     acknowledge: acknowledge,

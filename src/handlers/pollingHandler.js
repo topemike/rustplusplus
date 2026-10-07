@@ -34,19 +34,37 @@ const VendingMachines = require('../handlers/vendingMachineHandler.js');
 
 module.exports = {
     pollingHandler: async function (rustplus, client) {
+        /* A slow poll must not overlap the next one (duplicated messages) */
+        if (rustplus.pollingBusy) return;
+        rustplus.pollingBusy = true;
+        try {
+            await module.exports.poll(rustplus, client);
+        }
+        finally {
+            rustplus.pollingBusy = false;
+        }
+    },
+
+    poll: async function (rustplus, client) {
         /* Poll information such as info, mapMarkers, teamInfo and time */
         let info = await rustplus.getInfoAsync();
         if (!(await rustplus.isResponseValid(info))) return;
 
-        /* Device "not found" notices held back during a restart: send the ones still missing */
+        /* The server is on and answering: confirm the held "not found" notices */
         try {
-            await require('../util/deviceNotices.js').flush(client, rustplus.guildId, async (type, serverId, entityId) => {
+            await require('../util/deviceNotices.js').verify(client, rustplus, async (type, serverId, entityId) => {
                 const fn = { switch: 'sendSmartSwitchNotFoundMessage', alarm: 'sendSmartAlarmNotFoundMessage',
                     storageMonitor: 'sendStorageMonitorNotFoundMessage' }[type];
                 await require('../discordTools/discordMessages.js')[fn](rustplus.guildId, serverId, entityId, true);
+                /* A Smart Alarm confirmed gone (destroyed): the raid it was part of is over */
+                if (type === 'alarm') {
+                    await require('./raidHandler.js').onAlarmLost(client, rustplus.guildId, entityId);
+                }
             });
         }
-        catch (e) { /* not critical */ }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Device notices: ${e}`, 'error');
+        }
         let mapMarkers = await rustplus.getMapMarkersAsync();
         if (!(await rustplus.isResponseValid(mapMarkers))) return;
         let teamInfo = await rustplus.getTeamInfoAsync();

@@ -97,7 +97,7 @@ module.exports = {
 
 		const embed = DiscordEmbeds.getEmbed({
 			color: Constants.COLOR_DEFAULT,
-			title: intl('marketSearchTitle', { query: query, count: type === 'buy' ? offers.buy.length : offers.sell.length }),
+			title: intl('marketSearchTitle', { query: query, count: type === 'buy' ? offers.buy.length : offers.sell.length }).slice(0, 256),
 			description: `*${itemNames}*\n\n${description}`.slice(0, 4096),
 			fields: fields,
 			footer: { text: instance.serverList[rustplus.serverId].title }

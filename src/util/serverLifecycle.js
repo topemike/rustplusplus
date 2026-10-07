@@ -114,6 +114,8 @@ async function cleanupUnreachableDevices(client, guildId, serverId) {
         }
         catch (e) { /* ignore */ }
     }
+    try { require('../handlers/raidHandler.js').forget(guildId); }
+    catch (e) { /* not critical */ }
 
     for (const groupId of changedGroups) {
         try {
@@ -208,6 +210,8 @@ async function purgeOtherServers(client, guildId, keepServerId) {
         try { await DiscordTools.clearTextChannel(guildId, channelId, 1000); }
         catch (e) { /* ignore */ }
     }
+    try { require('../handlers/raidHandler.js').forget(guildId); }
+    catch (e) { /* not critical */ }
     return removed;
 }
 
