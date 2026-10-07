@@ -1290,11 +1290,25 @@ module.exports = async (client, interaction) => {
             value: `wipe cleanup ${JSON.stringify(removed)}`
         }));
 
+        if (removed.notConnected) {
+            /* Without asking the server nothing is deleted: keep the button for later */
+            await interaction.editReply({
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_INACTIVE,
+                    description: client.intlGet(guildId, 'wipeCleanupNotConnected')
+                })],
+                components: interaction.message ? interaction.message.components : []
+            });
+            return;
+        }
+
+        let description = client.intlGet(guildId, 'wipeCleanupDoneDesc', removed);
+        if (removed.kept > 0) description += `\n${client.intlGet(guildId, 'wipeCleanupKept', { kept: removed.kept })}`;
         const done = {
             embeds: [DiscordEmbeds.getEmbed({
                 color: Constants.COLOR_ACTIVE,
                 title: client.intlGet(guildId, 'wipeCleanupDoneTitle'),
-                description: client.intlGet(guildId, 'wipeCleanupDoneDesc', removed)
+                description: description
             })],
             components: []
         };

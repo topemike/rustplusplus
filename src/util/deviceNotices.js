@@ -47,6 +47,8 @@ function answeredFound(response) {
 }
 
 module.exports = {
+    answeredNotFound: answeredNotFound,
+    answeredFound: answeredFound,
     CHECK_EVERY_MS: CHECK_EVERY_MS,
     CONFIRMATIONS: CONFIRMATIONS,
 
