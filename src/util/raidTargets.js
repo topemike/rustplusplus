@@ -19,12 +19,13 @@
 */
 
 /*
- *  Helpers to configure the switches / switch groups an alarm turns on, or off ("-name").
+ *  Helpers to configure the switches / switch groups an alarm turns on or off, written like the
+ *  commands: "turrets on, sam off" (also "encender" / "apagar"; without on/off it turns on).
  */
 
 /**
- *  Resolves a comma separated list of switch / group names, commands or ids. A "-" in front
- *  means "turn it off" (e.g. "turrets, -sam").
+ *  Resolves a comma separated list of switch / group names, commands or ids, each followed by
+ *  on/off (e.g. "turrets on, sam off").
  *  @return {Object} { groups, switches, offGroups, offSwitches, unknown }
  */
 function resolveActionTargets(server, text) {
@@ -34,8 +35,16 @@ function resolveActionTargets(server, text) {
     const norm = (s) => `${s}`.trim().toLowerCase();
     for (const raw of text.split(',')) {
         let token = norm(raw);
-        const off = token.startsWith('-');
-        if (off) token = norm(token.slice(1));
+        let off = false;
+        const m = token.match(/^(.*?)\s+(on|off|encender|apagar|encendido|apagado)$/);
+        if (m) {
+            token = norm(m[1]);
+            off = m[2] === 'off' || m[2].startsWith('apag');
+        }
+        else if (token.startsWith('-')) {   /* old way of writing it */
+            off = true;
+            token = norm(token.slice(1));
+        }
         if (token === '') continue;
         const groups = off ? result.offGroups : result.groups;
         const switches = off ? result.offSwitches : result.switches;
@@ -67,23 +76,26 @@ function hasTargets(targets) {
 }
 
 /**
- *  Names of the configured actions. which: 'on', 'off', or 'all' (for the edit form, with "-"
- *  in front of the ones turned off).
+ *  Names of the configured actions. which: 'on', 'off', or 'all' (for the edit form, written
+ *  like the commands: "Turrets on, SAM off").
  */
 function describeActionTargets(server, alarm, which = 'on') {
     if (!alarm.actions) return '';
-    const names = (groups, switches, prefix) => {
+    /* In the edit form the command is written (what you type in the game), e.g. "sam off" */
+    const names = (groups, switches, suffix) => {
         const out = [];
         for (const groupId of groups || []) {
-            if (server.switchGroups && server.switchGroups[groupId]) out.push(prefix + server.switchGroups[groupId].name);
+            const g = server.switchGroups ? server.switchGroups[groupId] : null;
+            if (g) out.push(which === 'all' ? `${g.command} ${suffix}` : g.name);
         }
         for (const entityId of switches || []) {
-            if (server.switches && server.switches[entityId]) out.push(prefix + server.switches[entityId].name);
+            const sw = server.switches ? server.switches[entityId] : null;
+            if (sw) out.push(which === 'all' ? `${sw.command} ${suffix}` : sw.name);
         }
         return out;
     };
-    const on = names(alarm.actions.groups, alarm.actions.switches, '');
-    const off = names(alarm.actions.offGroups, alarm.actions.offSwitches, which === 'all' ? '-' : '');
+    const on = names(alarm.actions.groups, alarm.actions.switches, 'on');
+    const off = names(alarm.actions.offGroups, alarm.actions.offSwitches, 'off');
     if (which === 'off') return off.join(', ');
     if (which === 'all') return on.concat(off).join(', ');
     return on.join(', ');
