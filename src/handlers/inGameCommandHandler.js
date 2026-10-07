@@ -243,7 +243,7 @@ module.exports = {
                 return true;
             }
 
-            if (await SmartSwitchHandler.smartSwitchCommandHandler(rustplus, client, command)) {
+            if (await SmartSwitchHandler.smartSwitchCommandHandler(rustplus, client, command, callerSteamId)) {
                 rustplus.logInGameCommand('Smart Switch', message);
                 return true;
             }

@@ -1020,5 +1020,13 @@
     "serverConnectPurgeDone": "Connected to {server}. Deleted {servers} servers and {trackers} trackers from before.",
     "summaryDeepSeaTitle": "🌊 Deep Sea",
     "summaryDeepSeaFixed": "Open {open}, then closed {closed} until the next one (fixed cycle).",
-    "summaryDeepSeaRandom": "Open {open}, then closed between {closedMin} and {closedMax} until the next one."
+    "summaryDeepSeaRandom": "Open {open}, then closed between {closedMin} and {closedMax} until the next one.",
+    "proximityNearest": "Closest online: {name} at {distance} m (limit {proximity} m).",
+    "proximityNobodyOnline": "Nobody online in the team.",
+    "proximityUnknown": "No position for: {names} (counted as near, to be safe).",
+    "proximityHereNoPosition": "I can't read your position right now (are you alive?). Try again in a few seconds.",
+    "proximityHereSaved": "{device}: location saved at {location}. Proximity is measured from here ({proximity} m).",
+    "proximityNoLocation": "No location saved: stand next to it and write {command} here",
+    "proximityStatus": "Location {location}. {details}",
+    "smartSwitchCommandUsage": "Use: {command} on | off | status | here, optionally with a time: {command} on 2m"
 }
