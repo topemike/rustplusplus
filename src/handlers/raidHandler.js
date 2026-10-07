@@ -279,9 +279,23 @@ async function sendReminder(client, guildId, incident) {
  *  Called when a Smart Alarm of the connected server triggers (raid mode on).
  */
 async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, now = Date.now()) {
+    const server = client.getInstance(guildId).serverList[serverId];
+    await trigger(client, rustplus, guildId, serverId, entityId, server.alarms[entityId], true, now);
+}
+
+/**
+ *  Raid alert pushed by the "raid-alarm" server plugin (FCM): no Smart Alarm entity behind it.
+ *  It joins the same grouped raid message instead of an @everyone message per notification.
+ */
+async function onPluginAlarm(client, rustplus, guildId, serverId, title, message, now = Date.now()) {
+    const alarm = { name: title || 'Raid alarm', message: message || '', everyone: true };
+    await trigger(client, rustplus, guildId, serverId, `plugin:${alarm.name}`, alarm, false, now);
+}
+
+/* key = the alarm entity id, or a pseudo id for plugin alerts. alarm = { name, message, everyone, actions? } */
+async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isSmartAlarm, now) {
     const instance = client.getInstance(guildId);
     const server = instance.serverList[serverId];
-    const alarm = server.alarms[entityId];
 
     let incident = incidents[guildId];
     /* A raid of another server (the bot changed server) is not continued */
@@ -318,7 +332,8 @@ async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, n
     /* The alert first (with the mention), the actions after: they can take a few seconds */
     if (isNew) {
         await sendOrEditIncident(client, guildId, incident, true);
-        if (rustplus && instance.generalSettings.smartAlarmNotifyInGame) {
+        /* Plugin alerts always went to the game chat; Smart Alarms follow their setting */
+        if (rustplus && (!isSmartAlarm || instance.generalSettings.smartAlarmNotifyInGame)) {
             rustplus.sendInGameMessage(`${alarm.name}: ${alarm.message}`);
         }
     }
@@ -442,6 +457,7 @@ function forget(guildId) {
 module.exports = {
     forget: forget,
     onAlarmTriggered: onAlarmTriggered,
+    onPluginAlarm: onPluginAlarm,
     tick: tick,
     acknowledge: acknowledge,
     onAlarmLost: onAlarmLost,
