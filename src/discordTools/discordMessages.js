@@ -516,7 +516,8 @@ module.exports = {
             )]
         }
 
-        await module.exports.sendMessage(rustplus.guildId, content, null, instance.channelId.activity);
+        /* Market alerts go to #market (#activity if it does not exist) */
+        await module.exports.sendMessage(rustplus.guildId, content, null, instance.channelId.market || instance.channelId.activity);
     },
 
     sendHelpMessage: async function (interaction) {
