@@ -1016,5 +1016,11 @@
     "switchRaidLockDesc": "Turned off by the raid alarm. It stays like this, ignoring its automatic mode, until you press BACK TO AUTO, choose the mode again or use its command.",
     "raidEndedLockedReminder": "Still as the alarm left them: {targets}. Press BACK TO AUTO on each one (or use its command) when you want.",
     "wipeCleanupKept": "Kept {kept} that answer (they are from this wipe).",
-    "deepSeaOpenedEvent": "Deep Sea opened."
+    "deepSeaOpenedEvent": "Deep Sea opened.",
+    "serverConnectPurgeTitle": "Connect to {server}: everything from the previous server will be deleted",
+    "serverConnectPurgeDesc": "The bot still has data from:\n{servers}\n\nTo use the bot with the new server, everything from the previous one is deleted: its devices (switches, groups, alarms, storage monitors), Deep Sea and base, {trackers} trackers, the history of events and raids, and the messages in #events, #activity and #base. It cannot be undone.",
+    "serverConnectPurgeCap": "DELETE THE PREVIOUS ONE AND CONNECT",
+    "serverConnectPurgeNoPermission": "Changing server deletes everything from the previous one: only Discord administrators or the current hoster can do it.",
+    "serverConnectPurgeWorking": "Deleting the previous server and connecting to {server}…",
+    "serverConnectPurgeDone": "Connected to {server}. Deleted {servers} servers and {trackers} trackers from before."
 }

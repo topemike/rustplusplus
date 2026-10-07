@@ -177,6 +177,34 @@ function getServerChangeMessage(client, guildId, keepServerId) {
     };
 }
 
+/**
+ *  Warning shown when someone presses CONNECT on a server while others are still stored: connecting
+ *  deletes everything about them first. null if there is nothing to delete.
+ */
+function getConnectPurgeMessage(client, guildId, targetServerId) {
+    const instance = client.getInstance(guildId);
+    const target = instance.serverList[targetServerId];
+    const others = otherServers(instance, targetServerId);
+    if (!target || others.length === 0) return null;
+    const trackers = Object.values(instance.trackers || {}).filter(t => t.serverId !== targetServerId).length;
+    return {
+        embeds: [DiscordEmbeds.getEmbed({
+            color: Constants.COLOR_INACTIVE,
+            title: client.intlGet(guildId, 'serverConnectPurgeTitle', { server: target.title || targetServerId }),
+            description: client.intlGet(guildId, 'serverConnectPurgeDesc', {
+                servers: others.map(id => `• ${instance.serverList[id].title || id}`).join('\n'),
+                trackers: trackers
+            })
+        })],
+        components: [new Discord.ActionRowBuilder().addComponents(
+            new Discord.ButtonBuilder()
+                .setCustomId(`ServerConnectPurge${JSON.stringify({ serverId: targetServerId })}`)
+                .setLabel(client.intlGet(guildId, 'serverConnectPurgeCap'))
+                .setStyle(Discord.ButtonStyle.Danger))],
+        ephemeral: true
+    };
+}
+
 /* Offered when the bot connects to a different server than the previous one */
 async function sendServerChangeOffer(client, guildId, keepServerId) {
     const instance = client.getInstance(guildId);
@@ -197,9 +225,14 @@ async function purgeOtherServers(client, guildId, keepServerId) {
 
     for (const serverId of otherServers(instance, keepServerId)) {
         const server = instance.serverList[serverId];
-        for (const alarm of Object.values(server.alarms || {})) {
-            try { await DiscordTools.deleteMessageById(guildId, instance.channelId.alarms, alarm.messageId); }
-            catch (e) { /* already gone */ }
+        /* Every message of that server's devices: alarms, switches, groups and storage monitors */
+        for (const [list, channelId] of [['alarms', instance.channelId.alarms], ['switches', instance.channelId.switches],
+            ['switchGroups', instance.channelId.switchGroups], ['storageMonitors', instance.channelId.storageMonitors]]) {
+            for (const entity of Object.values(server[list] || {})) {
+                if (!channelId || !entity || !entity.messageId) continue;
+                try { await DiscordTools.deleteMessageById(guildId, channelId, entity.messageId); }
+                catch (e) { /* already gone */ }
+            }
         }
         try { await DiscordTools.deleteMessageById(guildId, instance.channelId.servers, server.messageId); }
         catch (e) { /* already gone */ }
@@ -285,6 +318,7 @@ module.exports = {
     getPurgeAllMessage: getPurgeAllMessage,
     purgeEverything: purgeEverything,
     getServerChangeMessage: getServerChangeMessage,
+    getConnectPurgeMessage: getConnectPurgeMessage,
     sendServerChangeOffer: sendServerChangeOffer,
     purgeOtherServers: purgeOtherServers,
     sendWipeCleanupOffer: sendWipeCleanupOffer,

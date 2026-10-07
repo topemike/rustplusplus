@@ -132,10 +132,9 @@ module.exports = {
             const lastInstance = client.getInstance(guildId);
             const previous = lastInstance.lastConnectedServer;
             if (previous !== serverId) {
+                /* Changing server already deleted the previous ones (CONNECT asks before) */
                 lastInstance.lastConnectedServer = serverId;
                 client.setInstance(guildId, lastInstance);
-                /* Also on the first connection after updating, if old servers are still stored */
-                await ServerLifecycle.sendServerChangeOffer(client, guildId, serverId);
             }
         }
         catch (e) {

@@ -428,6 +428,77 @@ module.exports = async (client, interaction) => {
             components: DiscordButtons.getSubscribeToChangesBattlemetricsButtons(guildId)
         });
     }
+    else if (interaction.customId.startsWith('ServerConnectPurge')) {
+        /* Confirmed: delete everything about the other servers, then connect to this one */
+        const ids = JSON.parse(interaction.customId.replace('ServerConnectPurge', ''));
+        const server = instance.serverList[ids.serverId];
+
+        if (!client.canManage(interaction)) {
+            await client.interactionUpdate(interaction, {
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_INACTIVE,
+                    description: client.intlGet(guildId, 'serverConnectPurgeNoPermission')
+                })],
+                components: []
+            });
+            return;
+        }
+        if (!server) {
+            await client.interactionUpdate(interaction, {
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_DEFAULT,
+                    description: client.intlGet(guildId, 'cleanupOutdated')
+                })],
+                components: []
+            });
+            return;
+        }
+
+        await client.interactionUpdate(interaction, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_DEFAULT,
+                description: client.intlGet(guildId, 'serverConnectPurgeWorking', { server: server.title })
+            })],
+            components: []
+        });
+
+        /* Stop the current connection before deleting its server */
+        if (rustplus) {
+            rustplus.isDeleted = true;
+            try { rustplus.disconnect(); } catch (e) { /* already disconnected */ }
+            delete client.rustplusInstances[guildId];
+        }
+        const removed = await require('../util/serverLifecycle.js').purgeOtherServers(client, guildId, ids.serverId);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `connect ${ids.serverId} and purge ${JSON.stringify(removed)}`
+        }));
+
+        const fresh = client.getInstance(guildId);
+        client.resetRustplusVariables(guildId);
+        fresh.activeServer = ids.serverId;
+        fresh.lastConnectedServer = ids.serverId;
+        client.setInstance(guildId, fresh);
+
+        const newRustplus = client.createRustplusInstance(
+            guildId, server.serverIp, server.appPort, server.steamId, server.playerToken);
+        await DiscordMessages.sendServerMessage(guildId, ids.serverId, null);
+        newRustplus.isNewConnection = true;
+
+        try {
+            await interaction.editReply({
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_ACTIVE,
+                    description: client.intlGet(guildId, 'serverConnectPurgeDone', {
+                        server: server.title, servers: removed.servers, trackers: removed.trackers
+                    })
+                })],
+                components: []
+            });
+        }
+        catch (e) { /* the warning was in a channel that got emptied */ }
+    }
     else if (interaction.customId.startsWith('ServerConnect')) {
         const ids = JSON.parse(interaction.customId.replace('ServerConnect', ''));
         const server = instance.serverList[ids.serverId];
@@ -435,6 +506,25 @@ module.exports = async (client, interaction) => {
         if (!server) {
             await interaction.message.delete();
             return;
+        }
+
+        /* Another server: everything about the previous ones is deleted first. Warn and ask. */
+        if (ids.serverId !== instance.activeServer) {
+            const warning = require('../util/serverLifecycle.js').getConnectPurgeMessage(client, guildId, ids.serverId);
+            if (warning) {
+                if (!client.canManage(interaction)) {
+                    await client.interactionReply(interaction, {
+                        embeds: [DiscordEmbeds.getEmbed({
+                            color: Constants.COLOR_INACTIVE,
+                            description: client.intlGet(guildId, 'serverConnectPurgeNoPermission')
+                        })],
+                        ephemeral: true
+                    });
+                    return;
+                }
+                await client.interactionReply(interaction, warning);
+                return;
+            }
         }
 
         client.resetRustplusVariables(guildId);
