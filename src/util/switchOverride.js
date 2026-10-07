@@ -19,13 +19,13 @@
 */
 
 /*
- *  Manual override for switches in a proximity / any-online automatic mode.
+ *  Manual override for switches in an automatic mode (always on/off, proximity, any online).
  *  When someone turns such a switch on/off by hand, the automatic mode leaves it alone
  *  until the situation it reacts to changes (e.g. everyone leaves the base or logs off),
  *  and then takes over again.
  */
 
-const OVERRIDABLE_MODES = [5, 6, 7, 8];
+const OVERRIDABLE_MODES = [3, 4, 5, 6, 7, 8];
 
 module.exports = {
     OVERRIDABLE_MODES: OVERRIDABLE_MODES,

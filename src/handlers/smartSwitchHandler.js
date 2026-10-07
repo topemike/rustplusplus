@@ -21,8 +21,16 @@
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const SwitchOverride = require('../util/switchOverride.js');
 const Map = require('../util/map.js');
+const Proximity = require('../util/proximity.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const Timer = require('../util/timer');
+
+function warnUnknownPositions(rustplus, client, content, state) {
+    if (state.unknown.length === 0 || rustplus.proximityUnknownWarned) return;
+    rustplus.proximityUnknownWarned = true;
+    rustplus.log(client.intlGet(null, 'warningCap'), `Proximity: ${content.name}: ` +
+        `${Proximity.describe(client, null, content, state)} Counted as near (safe side).`, 'warning');
+}
 
 module.exports = {
     handler: async function (rustplus, client, time) {
@@ -175,8 +183,19 @@ module.exports = {
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
             /* Held on by an alarm action: automatic modes must not change it */
             if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
-            if (content.autoDayNightOnOff === 3) { /* AUTO-ON */
+            if (content.autoDayNightOnOff === 3) { /* ALWAYS ON: what the Discord menu says */
+                /* An order by hand (command / Discord button) prevails until its time is up or VOLVER A AUTOMÁTICO */
+                const wasPaused = SwitchOverride.isPaused(content);
+                if (SwitchOverride.respectManual(content, true)) {
+                    client.setInstance(guildId, instance);
+                    continue;
+                }
+                if (wasPaused) {
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                }
                 if (content.active) continue;
+                rustplus.log(client.intlGet(null, 'infoCap'), `Always ON: ${content.name} (${content.command}) -> ON.`);
 
                 instance.serverList[serverId].switches[entityId].active = true;
                 client.setInstance(guildId, instance);
@@ -200,8 +219,19 @@ module.exports = {
                 DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 changedSwitches.push(entityId);
             }
-            else if (content.autoDayNightOnOff === 4) { /* AUTO-OFF */
+            else if (content.autoDayNightOnOff === 4) { /* ALWAYS OFF: what the Discord menu says */
+                /* An order by hand (command / Discord button) prevails until its time is up or VOLVER A AUTOMÁTICO */
+                const wasPaused = SwitchOverride.isPaused(content);
+                if (SwitchOverride.respectManual(content, false)) {
+                    client.setInstance(guildId, instance);
+                    continue;
+                }
+                if (wasPaused) {
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                }
                 if (!content.active) continue;
+                rustplus.log(client.intlGet(null, 'infoCap'), `Always OFF: ${content.name} (${content.command}) -> OFF.`);
 
                 instance.serverList[serverId].switches[entityId].active = false;
                 client.setInstance(guildId, instance);
@@ -226,13 +256,9 @@ module.exports = {
                 changedSwitches.push(entityId);
             }
             else if (content.autoDayNightOnOff === 5 && content.location !== null) { /* AUTO-ON-PROXIMITY */
-                let shouldBeOn = false;
-                for (const player of rustplus.team.players) {
-                    if (!player.isOnline) continue;
-                    if (Map.getDistance(content.x, content.y, player.x, player.y) <= content.proximity) {
-                        shouldBeOn = true;
-                    }
-                }
+                const state = Proximity.decide(rustplus, entityId, content);
+                const shouldBeOn = state.decidedNear;
+                warnUnknownPositions(rustplus, client, content, state);
                 const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
@@ -246,6 +272,8 @@ module.exports = {
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
                     instance.serverList[serverId].switches[entityId].active = shouldBeOn;
+                    rustplus.log(client.intlGet(null, 'infoCap'), `Proximity: ${content.name} (${content.command}) -> ` +
+                        `${shouldBeOn ? 'ON' : 'OFF'}. ${Proximity.describe(client, null, content, state)}`);
                     client.setInstance(guildId, instance);
 
                     rustplus.interactionSwitches.push(entityId);
@@ -269,13 +297,9 @@ module.exports = {
                 }
             }
             else if (content.autoDayNightOnOff === 6 && content.location !== null) { /* AUTO-OFF-PROXIMITY */
-                let shouldBeOn = true;
-                for (const player of rustplus.team.players) {
-                    if (!player.isOnline) continue;
-                    if (Map.getDistance(content.x, content.y, player.x, player.y) <= content.proximity) {
-                        shouldBeOn = false;
-                    }
-                }
+                const state = Proximity.decide(rustplus, entityId, content);
+                const shouldBeOn = !state.decidedNear;
+                warnUnknownPositions(rustplus, client, content, state);
                 const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
@@ -289,6 +313,8 @@ module.exports = {
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
                     instance.serverList[serverId].switches[entityId].active = shouldBeOn;
+                    rustplus.log(client.intlGet(null, 'infoCap'), `Proximity: ${content.name} (${content.command}) -> ` +
+                        `${shouldBeOn ? 'ON' : 'OFF'}. ${Proximity.describe(client, null, content, state)}`);
                     client.setInstance(guildId, instance);
 
                     rustplus.interactionSwitches.push(entityId);
@@ -312,10 +338,8 @@ module.exports = {
                 }
             }
             else if (content.autoDayNightOnOff === 7) { /* AUTO-ON-ANY-ONLINE */
-                let shouldBeOn = false;
-                for (const player of rustplus.team.players) {
-                    if (player.isOnline) shouldBeOn = true;
-                }
+                const onlineState = Proximity.decideOnline(rustplus, entityId);
+                const shouldBeOn = onlineState.decidedOnline;
                 const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
@@ -329,6 +353,8 @@ module.exports = {
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
                     instance.serverList[serverId].switches[entityId].active = shouldBeOn;
+                    rustplus.log(client.intlGet(null, 'infoCap'), `Any online: ${content.name} (${content.command}) -> ` +
+                        `${shouldBeOn ? 'ON' : 'OFF'}. Online: ${onlineState.online.join(', ') || 'nobody'}.`);
                     client.setInstance(guildId, instance);
 
                     rustplus.interactionSwitches.push(entityId);
@@ -352,10 +378,8 @@ module.exports = {
                 }
             }
             else if (content.autoDayNightOnOff === 8) { /* AUTO-OFF-ANY-ONLINE */
-                let shouldBeOn = true;
-                for (const player of rustplus.team.players) {
-                    if (player.isOnline) shouldBeOn = false;
-                }
+                const onlineState = Proximity.decideOnline(rustplus, entityId);
+                const shouldBeOn = !onlineState.decidedOnline;
                 const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
@@ -369,6 +393,8 @@ module.exports = {
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
                     instance.serverList[serverId].switches[entityId].active = shouldBeOn;
+                    rustplus.log(client.intlGet(null, 'infoCap'), `Any online: ${content.name} (${content.command}) -> ` +
+                        `${shouldBeOn ? 'ON' : 'OFF'}. Online: ${onlineState.online.join(', ') || 'nobody'}.`);
                     client.setInstance(guildId, instance);
 
                     rustplus.interactionSwitches.push(entityId);
@@ -401,7 +427,7 @@ module.exports = {
         }
     },
 
-    smartSwitchCommandHandler: async function (rustplus, client, command) {
+    smartSwitchCommandHandler: async function (rustplus, client, command, callerSteamId = null) {
         const guildId = rustplus.guildId;
         const serverId = rustplus.serverId;
         const instance = client.getInstance(guildId);
@@ -431,6 +457,34 @@ module.exports = {
         if ([onEn, onLang, 'on', 'encender', 'encendido'].includes(word)) words[0] = onEn;
         else if ([offEn, offLang, 'off', 'apagar', 'apagado'].includes(word)) words[0] = offEn;
         command = `${entityCommand} ${words.join(' ')}`.trim();
+
+        /* "!sam aquí": the switch is where I am now (the proximity modes measure from this point) */
+        if (['aquí', 'aqui', 'here'].includes(word)) {
+            const caller = callerSteamId && rustplus.team ? rustplus.team.getPlayer(callerSteamId) : null;
+            if (!caller || !caller.isAlive || !Proximity.hasPosition(caller)) {
+                rustplus.sendInGameMessage(client.intlGet(guildId, 'proximityHereNoPosition'));
+                return true;
+            }
+            const pos = Map.getPos(caller.x, caller.y, rustplus.info.correctedMapSize, rustplus);
+            switches[entityId].x = caller.x;
+            switches[entityId].y = caller.y;
+            switches[entityId].location = pos.location;
+            if (rustplus.proximityAwaySince) delete rustplus.proximityAwaySince[entityId];
+            client.setInstance(guildId, instance);
+            DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+            rustplus.sendInGameMessage(client.intlGet(guildId, 'proximityHereSaved', {
+                device: switches[entityId].name, location: pos.location, proximity: switches[entityId].proximity
+            }));
+            return true;
+        }
+
+        /* An unknown word must not switch anything (before, "!sam xyz" toggled it) */
+        const knownWords = [onEn, onLang, offEn, offLang, statusEn, statusLang];
+        if (words[0] && !knownWords.includes(words[0]) &&
+            Timer.getSecondsFromStringTime(words.join(' ')) === null) {
+            rustplus.sendInGameMessage(client.intlGet(guildId, 'smartSwitchCommandUsage', { command: entityCommand }));
+            return true;
+        }
 
         let rest = command.replace(`${entityCommand} ${onEn}`, '');
         rest = rest.replace(`${entityCommand} ${onLang}`, '');
@@ -483,6 +537,18 @@ module.exports = {
                 device: switches[entityId].name,
                 status: info.entityInfo.payload.value ? onCap : offCap
             }));
+            const sw = switches[entityId];
+            if ([5, 6].includes(sw.autoDayNightOnOff)) {
+                if (sw.location === null || sw.x === null) {
+                    rustplus.sendInGameMessage(client.intlGet(guildId, 'proximityNoLocation', { command: entityCommand }));
+                }
+                else {
+                    const state = Proximity.check(rustplus, sw);
+                    rustplus.sendInGameMessage(client.intlGet(guildId, 'proximityStatus', {
+                        location: sw.location, details: Proximity.describe(client, guildId, sw, state)
+                    }));
+                }
+            }
             return true;
         }
         else if (command.startsWith(`${entityCommand}`)) {

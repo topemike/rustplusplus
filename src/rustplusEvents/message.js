@@ -161,10 +161,17 @@ async function messageBroadcastEntityChangedSmartSwitch(rustplus, client, messag
         delete rustplus.currentSwitchTimeouts[entityId];
     }
 
-    /* A change coming from the game (not a command or a Discord button) does not pause the
-       automatic mode: if the switch has one, it puts the switch back as it should be */
+    /* A change coming from the game. With SIEMPRE ENCENDIDO / SIEMPRE APAGADO it is respected like a
+       command (also during a raid) until VOLVER A AUTOMÁTICO. The proximity / online modes keep deciding. */
     const active = message.broadcast.entityChanged.payload.value;
-    server.switches[entityId].active = active;
+    const sw = server.switches[entityId];
+    sw.active = active;
+    if ([3, 4].includes(sw.autoDayNightOnOff)) {
+        delete sw.raidLock;
+        delete sw.holdUntil;
+        if (active === (sw.autoDayNightOnOff === 3)) delete sw.manualOverride;
+        else require('../util/switchOverride.js').setManual(sw, active);
+    }
     client.setInstance(rustplus.guildId, instance);
 
     DiscordMessages.sendSmartSwitchMessage(rustplus.guildId, serverId, entityId);
