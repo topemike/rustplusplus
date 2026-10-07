@@ -65,8 +65,11 @@ function missingItems(prevItems, newItems) {
     return missing.sort((a, b) => b.quantity - a.quantity);
 }
 
+/* true / false, or null when the bot has no team information (it cannot know) */
 function isWholeTeamOffline(rustplus) {
-    if (!rustplus || !rustplus.team || !Array.isArray(rustplus.team.players)) return false;
+    if (!rustplus || !rustplus.team || !Array.isArray(rustplus.team.players) || rustplus.team.players.length === 0) {
+        return null;
+    }
     return rustplus.team.players.every(p => !p.isOnline);
 }
 
@@ -156,8 +159,9 @@ async function onStorageUpdate(client, rustplus, entityId, prevItems, payload, n
     const lostPercent = lost / prevTotal * 100;
     if (lostPercent < Config.baseWatch.boxDropPercent) return;
 
+    /* Without team information the bot cannot tell: better to warn (without @everyone) than to miss it */
     const teamOffline = isWholeTeamOffline(rustplus);
-    if (Config.baseWatch.boxAlertOnlyWhenTeamOffline && !teamOffline) return;
+    if (Config.baseWatch.boxAlertOnlyWhenTeamOffline && teamOffline === false) return;
 
     const key = `${guildId}-${entityId}`;
     if (lastItemAlert[key] && nowMs - lastItemAlert[key] < ITEM_ALERT_COOLDOWN_MS) return;
@@ -168,12 +172,12 @@ async function onStorageUpdate(client, rustplus, entityId, prevItems, payload, n
 
     await sendAlert(client, guildId,
         client.intlGet(guildId, 'boxLootedTitle', { name: entity.name }),
-        client.intlGet(guildId, teamOffline ? 'boxLootedDescOffline' : 'boxLootedDesc', {
+        client.intlGet(guildId, teamOffline === true ? 'boxLootedDescOffline' : 'boxLootedDesc', {
             percent: Math.round(lostPercent),
             items: missing,
             location: entity.location || '-'
         }),
-        Constants.COLOR_INACTIVE, teamOffline);
+        Constants.COLOR_INACTIVE, teamOffline === true);
 }
 
 module.exports = {
