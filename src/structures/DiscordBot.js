@@ -547,6 +547,24 @@ class DiscordBot extends Discord.Client {
     isAdministrator(interaction) {
         return interaction.member.permissions.has(Discord.PermissionFlagsBits.Administrator);
     }
+
+    /* The Discord user linked to the current hoster credentials (/credentials set_hoster) */
+    isHoster(interaction) {
+        try {
+            const credentials = InstanceUtils.readCredentialsFile(interaction.guildId);
+            const hoster = credentials ? credentials.hoster : null;
+            return !!hoster && !!credentials[hoster] &&
+                `${credentials[hoster].discord_user_id}` === `${interaction.user.id}`;
+        }
+        catch (e) {
+            return false;
+        }
+    }
+
+    /* Who may delete things and clean up: Discord administrators and the current hoster, nobody else */
+    canManage(interaction) {
+        return this.isAdministrator(interaction) || this.isHoster(interaction);
+    }
 }
 
 module.exports = DiscordBot;

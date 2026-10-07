@@ -31,7 +31,7 @@ module.exports = {
         username: process.env.RPP_DISCORD_USERNAME || 'rustplusplus',
         clientId: process.env.RPP_DISCORD_CLIENT_ID || '',
         token: process.env.RPP_DISCORD_TOKEN || '',
-        needAdminPrivileges: !['false', '0', 'no'].includes(`${process.env.RPP_NEED_ADMIN_PRIVILEGES || ''}`.trim().toLowerCase()), /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
+        needAdminPrivileges: !['false', '0', 'no'].includes(`${process.env.RPP_NEED_ADMIN_PRIVILEGES || ''}`.trim().toLowerCase()), /* No longer used: deleting is always for administrators and the current hoster (client.canManage) */
     },
     battlemetrics: {
         token: process.env.RPP_BATTLEMETRICS_TOKEN || ''
