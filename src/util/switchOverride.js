@@ -28,6 +28,26 @@
 const OVERRIDABLE_MODES = [5, 6, 7, 8];
 
 module.exports = {
+    OVERRIDABLE_MODES: OVERRIDABLE_MODES,
+
+    /* The automatic mode is paused because someone changed the switch by hand */
+    isPaused: function (switchContent) {
+        return !!switchContent && !!switchContent.manualOverride &&
+            OVERRIDABLE_MODES.includes(switchContent.autoDayNightOnOff);
+    },
+
+    /* Turned off by a raid alarm: stays like that until someone gives an order */
+    isRaidLocked: function (switchContent) {
+        return !!switchContent && !!switchContent.raidLock;
+    },
+
+    /* Back to automatic: the mode decides again from the next check */
+    clear: function (switchContent) {
+        if (!switchContent) return;
+        delete switchContent.manualOverride;
+        delete switchContent.raidLock;
+    },
+
     /* Call when a switch is turned on/off by hand (Discord, in-game command, in game). */
     setManual: function (switchContent, active) {
         if (!switchContent || !OVERRIDABLE_MODES.includes(switchContent.autoDayNightOnOff)) return false;

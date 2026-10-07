@@ -70,7 +70,7 @@ module.exports = {
         if (rustplus.time.isTurnedDay(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
                 /* Held on by an alarm action: automatic modes must not change it */
-                if (content.holdUntil && Date.now() < content.holdUntil) continue;
+                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = true;
                     client.setInstance(guildId, instance);
@@ -122,7 +122,7 @@ module.exports = {
         else if (rustplus.time.isTurnedNight(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
                 /* Held on by an alarm action: automatic modes must not change it */
-                if (content.holdUntil && Date.now() < content.holdUntil) continue;
+                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = false;
                     client.setInstance(guildId, instance);
@@ -174,7 +174,7 @@ module.exports = {
 
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
             /* Held on by an alarm action: automatic modes must not change it */
-            if (content.holdUntil && Date.now() < content.holdUntil) continue;
+            if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
             if (content.autoDayNightOnOff === 3) { /* AUTO-ON */
                 if (content.active) continue;
 
@@ -233,9 +233,15 @@ module.exports = {
                         shouldBeOn = true;
                     }
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -270,9 +276,15 @@ module.exports = {
                         shouldBeOn = false;
                     }
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -304,9 +316,15 @@ module.exports = {
                 for (const player of rustplus.team.players) {
                     if (player.isOnline) shouldBeOn = true;
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -338,9 +356,15 @@ module.exports = {
                 for (const player of rustplus.team.players) {
                     if (player.isOnline) shouldBeOn = false;
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -401,6 +425,13 @@ module.exports = {
         if (!entityId) return false;
 
         const entityCommand = `${prefix}${switches[entityId].command}`;
+        /* Also understood: "encender/encendido/apagar/apagado" (and any case), e.g. "!sam encendido 2m" */
+        const words = command.slice(entityCommand.length).trim().split(/\s+/);
+        const word = (words[0] || '').toLowerCase();
+        if ([onEn, onLang, 'on', 'encender', 'encendido'].includes(word)) words[0] = onEn;
+        else if ([offEn, offLang, 'off', 'apagar', 'apagado'].includes(word)) words[0] = offEn;
+        command = `${entityCommand} ${words.join(' ')}`.trim();
+
         let rest = command.replace(`${entityCommand} ${onEn}`, '');
         rest = rest.replace(`${entityCommand} ${onLang}`, '');
         rest = rest.replace(`${entityCommand} ${offEn}`, '');
@@ -487,14 +518,29 @@ module.exports = {
         }
 
         const time = Timer.secondsToFullScale(timeSeconds);
-        str += client.intlGet(guildId, 'automaticallyTurnBackOnOff', {
-            status: active ? offCap : onCap,
-            time: time
-        });
+        /* With an automatic mode (proximity / online), when the time is up the mode decides again */
+        const backToAuto = SwitchOverride.OVERRIDABLE_MODES.includes(switches[entityId].autoDayNightOnOff);
+        str += backToAuto ?
+            client.intlGet(guildId, 'switchBackToAutoIn', { time: time }) :
+            client.intlGet(guildId, 'automaticallyTurnBackOnOff', {
+                status: active ? offCap : onCap,
+                time: time
+            });
 
         rustplus.currentSwitchTimeouts[entityId] = setTimeout(async function () {
             const instance = client.getInstance(guildId);
             if (!instance.serverList[serverId].switches.hasOwnProperty(entityId)) return;
+            delete rustplus.currentSwitchTimeouts[entityId];
+
+            if (SwitchOverride.OVERRIDABLE_MODES.includes(instance.serverList[serverId].switches[entityId].autoDayNightOnOff)) {
+                SwitchOverride.clear(instance.serverList[serverId].switches[entityId]);
+                client.setInstance(guildId, instance);
+                DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                rustplus.sendInGameMessage(client.intlGet(guildId, 'switchBackToAuto', {
+                    device: instance.serverList[serverId].switches[entityId].name
+                }));
+                return;
+            }
 
             await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, !active);
 
@@ -518,6 +564,7 @@ module.exports = {
 
         const prevActive = switches[entityId].active;
         switches[entityId].active = active;
+        delete switches[entityId].raidLock;     /* an order: the raid lock ends */
         SwitchOverride.setManual(switches[entityId], active);
         client.setInstance(guildId, instance);
 

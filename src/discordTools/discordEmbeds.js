@@ -58,17 +58,33 @@ module.exports = {
         const entity = instance.serverList[serverId].switches[entityId];
         const grid = entity.location !== null ? ` (${entity.location})` : '';
 
+        const fields = [{
+            name: Client.client.intlGet(guildId, 'customCommand'),
+            value: `\`${instance.generalSettings.prefix}${entity.command}\``,
+            inline: true
+        }];
+        if (require('../util/switchOverride.js').isRaidLocked(entity)) {
+            fields.push({
+                name: Client.client.intlGet(guildId, 'switchRaidLockTitle'),
+                value: Client.client.intlGet(guildId, 'switchRaidLockDesc'),
+                inline: false
+            });
+        }
+        else if (require('../util/switchOverride.js').isPaused(entity)) {
+            fields.push({
+                name: Client.client.intlGet(guildId, 'switchAutoPausedTitle'),
+                value: Client.client.intlGet(guildId, 'switchAutoPausedDesc'),
+                inline: false
+            });
+        }
+
         return module.exports.getEmbed({
             title: `${entity.name}${grid}`,
             color: entity.active ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE,
             description: `**ID**: \`${entityId}\``,
             thumbnail: `attachment://${entity.image}`,
             footer: { text: `${entity.server}` },
-            fields: [{
-                name: Client.client.intlGet(guildId, 'customCommand'),
-                value: `\`${instance.generalSettings.prefix}${entity.command}\``,
-                inline: true
-            }],
+            fields: fields,
             timestamp: true
         });
     },
@@ -278,10 +294,17 @@ module.exports = {
                 inline: false
             }, {
                 name: Client.client.intlGet(guildId, 'alarmActionsField'),
-                value: entity.actions ? Client.client.intlGet(guildId, 'alarmActionsDesc', {
-                    targets: RaidTargets.describeActionTargets(instance.serverList[serverId], entity) || '-',
-                    minutes: entity.actions.holdMinutes
-                }) : Client.client.intlGet(guildId, 'alarmActionsNone'),
+                value: entity.actions ? [
+                    RaidTargets.describeActionTargets(instance.serverList[serverId], entity, 'on') ?
+                        Client.client.intlGet(guildId, 'alarmActionsDesc', {
+                            targets: RaidTargets.describeActionTargets(instance.serverList[serverId], entity, 'on'),
+                            minutes: entity.actions.holdMinutes
+                        }) : null,
+                    RaidTargets.describeActionTargets(instance.serverList[serverId], entity, 'off') ?
+                        Client.client.intlGet(guildId, 'alarmActionsOffDesc', {
+                            targets: RaidTargets.describeActionTargets(instance.serverList[serverId], entity, 'off')
+                        }) : null
+                ].filter(e => e !== null).join('\n') || '-' : Client.client.intlGet(guildId, 'alarmActionsNone'),
                 inline: false
             }],
             timestamp: true

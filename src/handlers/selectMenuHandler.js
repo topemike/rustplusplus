@@ -140,6 +140,8 @@ module.exports = async (client, interaction) => {
         if ((value !== 5 && value !== 6) ||
             ((value === 5 || value === 6) && server.switches[ids.entityId].location !== null)) {
             server.switches[ids.entityId].autoDayNightOnOff = value;
+            /* The mode chosen now prevails over an earlier change by hand */
+            require('../util/switchOverride.js').clear(server.switches[ids.entityId]);
             client.setInstance(guildId, instance);
         }
 

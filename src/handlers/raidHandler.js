@@ -77,28 +77,59 @@ async function runAlarmActions(client, rustplus, guildId, serverId, alarm, now =
     }
     client.setInstance(guildId, instance);
 
+    /* Turned off by the alarm (e.g. the SAM to its normal mode): stays like that, ignoring its
+       automatic mode, until someone gives an order (button, mode, command) */
+    const locked = new Set(alarm.actions.offSwitches || []);
+    for (const groupId of alarm.actions.offGroups || []) {
+        if (!server.switchGroups[groupId]) continue;
+        for (const entityId of server.switchGroups[groupId].switches) locked.add(`${entityId}`);
+    }
+    for (const entityId of locked) {
+        if (server.switches[entityId]) {
+            server.switches[entityId].raidLock = true;
+            delete server.switches[entityId].manualOverride;
+        }
+    }
+    client.setInstance(guildId, instance);
+    for (const groupId of alarm.actions.offGroups || []) {
+        if (!server.switchGroups[groupId]) continue;
+        await SmartSwitchGroupHandler.TurnOnOffGroup(client, rustplus, guildId, serverId, groupId, false, false);
+    }
+    for (const entityId of alarm.actions.offSwitches || []) {
+        await setSwitch(client, rustplus, guildId, serverId, entityId, false);
+    }
+
     for (const groupId of alarm.actions.groups || []) {
         if (!server.switchGroups[groupId]) continue;
         await SmartSwitchGroupHandler.TurnOnOffGroup(client, rustplus, guildId, serverId, groupId, true, false);
     }
     for (const entityId of alarm.actions.switches || []) {
-        const sw = client.getInstance(guildId).serverList[serverId].switches[entityId];
-        if (!sw || sw.active) continue;
-        const fresh = client.getInstance(guildId);
-        fresh.serverList[serverId].switches[entityId].active = true;
-        client.setInstance(guildId, fresh);
-        rustplus.interactionSwitches.push(entityId);
-        const response = await rustplus.turnSmartSwitchOnAsync(entityId);
-        if (!(await rustplus.isResponseValid(response))) {
-            const failed = client.getInstance(guildId);
-            failed.serverList[serverId].switches[entityId].active = false;
-            failed.serverList[serverId].switches[entityId].reachable = false;
-            client.setInstance(guildId, failed);
-            rustplus.interactionSwitches = rustplus.interactionSwitches.filter(e => e !== entityId);
-        }
-        DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
-        await SmartSwitchGroupHandler.updateSwitchGroupIfContainSwitch(client, guildId, serverId, entityId);
+        await setSwitch(client, rustplus, guildId, serverId, entityId, true);
     }
+}
+
+/* Turns one switch on/off for an alarm (the bot's own change, not a person's) */
+async function setSwitch(client, rustplus, guildId, serverId, entityId, value) {
+    const sw = client.getInstance(guildId).serverList[serverId].switches[entityId];
+    if (!sw) return;
+    if (sw.active === value) {
+        DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+        return;
+    }
+    const fresh = client.getInstance(guildId);
+    fresh.serverList[serverId].switches[entityId].active = value;
+    client.setInstance(guildId, fresh);
+    rustplus.interactionSwitches.push(entityId);
+    const response = await rustplus.turnSmartSwitchAsync(entityId, value);
+    if (!(await rustplus.isResponseValid(response))) {
+        const failed = client.getInstance(guildId);
+        failed.serverList[serverId].switches[entityId].active = !value;
+        failed.serverList[serverId].switches[entityId].reachable = false;
+        client.setInstance(guildId, failed);
+        rustplus.interactionSwitches = rustplus.interactionSwitches.filter(e => e !== entityId);
+    }
+    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+    await SmartSwitchGroupHandler.updateSwitchGroupIfContainSwitch(client, guildId, serverId, entityId);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -120,6 +151,12 @@ function getIncidentEmbed(client, guildId, incident, now = Date.now()) {
             count: incident.count
         });
         if (incident.alarmsLost) description += `\n${client.intlGet(guildId, 'raidAlarmsLost')}`;
+        /* Switches the alarm turned off stay like that until someone says so: remind it */
+        const server = client.getInstance(guildId).serverList[incident.serverId];
+        const locked = server ? Object.values(server.switches || {}).filter(e => e.raidLock).map(e => e.name) : [];
+        if (locked.length > 0) {
+            description += `\n${client.intlGet(guildId, 'raidEndedLockedReminder', { targets: locked.join(', ') })}`;
+        }
     }
     else {
         title = client.intlGet(guildId, 'raidActiveTitle', { server: incident.serverTitle });
@@ -289,13 +326,17 @@ async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, n
     /* Alarm actions (rate limited) */
     if (alarm.actions && now - incident.lastActionAt >= ACTION_INTERVAL_MS) {
         incident.lastActionAt = now;
-        const names = describeActionTargets(server, alarm);
+        const names = describeActionTargets(server, alarm, 'on');
+        const offNames = describeActionTargets(server, alarm, 'off');
+        const parts = [];
         if (names !== '') {
-            incident.actionsText = client.intlGet(guildId, 'raidActionsDone', {
+            parts.push(client.intlGet(guildId, 'raidActionsDone', {
                 targets: names,
                 minutes: alarm.actions.holdMinutes || Config.raid.defaultHoldMinutes
-            });
+            }));
         }
+        if (offNames !== '') parts.push(client.intlGet(guildId, 'raidActionsOff', { targets: offNames }));
+        if (parts.length > 0) incident.actionsText = parts.join('\n');
         try {
             await runAlarmActions(client, rustplus, guildId, serverId, alarm, now);
         }

@@ -27,7 +27,6 @@ const RaidHandler = require('../handlers/raidHandler.js');
 const SmartSwitchGroupHandler = require('../handlers/smartSwitchGroupHandler.js');
 const TeamChatHandler = require("../handlers/teamChatHandler.js");
 const TeamHandler = require('../handlers/teamHandler.js');
-const SwitchOverride = require('../util/switchOverride.js');
 
 module.exports = {
     name: 'message',
@@ -162,9 +161,10 @@ async function messageBroadcastEntityChangedSmartSwitch(rustplus, client, messag
         delete rustplus.currentSwitchTimeouts[entityId];
     }
 
+    /* A change coming from the game (not a command or a Discord button) does not pause the
+       automatic mode: if the switch has one, it puts the switch back as it should be */
     const active = message.broadcast.entityChanged.payload.value;
     server.switches[entityId].active = active;
-    SwitchOverride.setManual(server.switches[entityId], active);
     client.setInstance(rustplus.guildId, instance);
 
     DiscordMessages.sendSmartSwitchMessage(rustplus.guildId, serverId, entityId);

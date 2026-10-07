@@ -262,7 +262,7 @@ module.exports = {
             new Discord.ActionRowBuilder().addComponents(TextInput.getTextInput({
                 customId: 'SmartAlarmActions',
                 label: Client.client.intlGet(guildId, 'alarmActionsLabel'),
-                value: RaidTargets.describeActionTargets(instance.serverList[serverId], entity),
+                value: RaidTargets.describeActionTargets(instance.serverList[serverId], entity, 'all'),
                 placeholder: Client.client.intlGet(guildId, 'alarmActionsPlaceholder'),
                 required: false,
                 style: Discord.TextInputStyle.Short
