@@ -670,6 +670,7 @@ module.exports = async (client, interaction) => {
         const active = (interaction.customId.startsWith('SmartSwitchOn')) ? true : false;
         const prevActive = server.switches[ids.entityId].active;
         server.switches[ids.entityId].active = active;
+        delete server.switches[ids.entityId].raidLock;     /* an order: the raid lock ends */
         SwitchOverride.setManual(server.switches[ids.entityId], active);
         client.setInstance(guildId, instance);
 
@@ -711,6 +712,25 @@ module.exports = async (client, interaction) => {
 
         DiscordMessages.sendSmartSwitchMessage(guildId, ids.serverId, ids.entityId, interaction);
         SmartSwitchGroupHandler.updateSwitchGroupIfContainSwitch(client, guildId, ids.serverId, ids.entityId);
+    }
+    else if (interaction.customId.startsWith('SmartSwitchResumeAuto')) {
+        const ids = JSON.parse(interaction.customId.replace('SmartSwitchResumeAuto', ''));
+        const server = instance.serverList[ids.serverId];
+
+        if (!server || (server && !server.switches.hasOwnProperty(ids.entityId))) {
+            await interaction.message.delete();
+            return;
+        }
+
+        SwitchOverride.clear(server.switches[ids.entityId]);
+        client.setInstance(guildId, instance);
+
+        client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
+            id: `${verifyId}`,
+            value: `resume auto ${ids.entityId}`
+        }));
+
+        DiscordMessages.sendSmartSwitchMessage(guildId, ids.serverId, ids.entityId, interaction);
     }
     else if (interaction.customId.startsWith('SmartSwitchEdit')) {
         const ids = JSON.parse(interaction.customId.replace('SmartSwitchEdit', ''));

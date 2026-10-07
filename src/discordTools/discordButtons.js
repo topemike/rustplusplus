@@ -155,7 +155,7 @@ module.exports = {
         const entity = instance.serverList[serverId].switches[entityId];
         const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
 
-        return new Discord.ActionRowBuilder().addComponents(
+        const row = new Discord.ActionRowBuilder().addComponents(
             module.exports.getButton({
                 customId: `SmartSwitch${entity.active ? 'Off' : 'On'}${identifier}`,
                 label: entity.active ?
@@ -173,6 +173,16 @@ module.exports = {
                 style: SECONDARY,
                 emoji: '🗑️'
             }));
+        /* Automatic mode paused by a change by hand: one click to give control back to it */
+        const SO = require('../util/switchOverride.js');
+        if (SO.isPaused(entity) || SO.isRaidLocked(entity)) {
+            row.addComponents(module.exports.getButton({
+                customId: `SmartSwitchResumeAuto${identifier}`,
+                label: Client.client.intlGet(guildId, 'switchAutoResumeCap'),
+                style: PRIMARY
+            }));
+        }
+        return row;
     },
 
     getSmartSwitchGroupButtons: function (guildId, serverId, groupId) {

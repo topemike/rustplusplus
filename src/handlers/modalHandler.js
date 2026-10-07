@@ -264,13 +264,15 @@ module.exports = async (client, interaction) => {
         const actionsText = interaction.fields.getTextInputValue('SmartAlarmActions');
         const holdMinutes = parseInt(interaction.fields.getTextInputValue('SmartAlarmHoldMinutes'));
         const targets = RaidTargets.resolveActionTargets(server, actionsText);
-        if (targets.groups.length === 0 && targets.switches.length === 0) {
+        if (!RaidTargets.hasTargets(targets)) {
             delete server.alarms[ids.entityId].actions;
         }
         else {
             server.alarms[ids.entityId].actions = {
                 groups: targets.groups,
                 switches: targets.switches,
+                offGroups: targets.offGroups,
+                offSwitches: targets.offSwitches,
                 holdMinutes: holdMinutes > 0 ? holdMinutes : Config.raid.defaultHoldMinutes
             };
         }

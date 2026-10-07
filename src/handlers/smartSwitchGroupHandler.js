@@ -78,7 +78,10 @@ module.exports = {
         for (const entityId of actionSwitches) {
             const prevActive = instance.serverList[serverId].switches[entityId].active;
             instance.serverList[serverId].switches[entityId].active = value;
-            if (markManual) SwitchOverride.setManual(instance.serverList[serverId].switches[entityId], value);
+            if (markManual) {
+                delete instance.serverList[serverId].switches[entityId].raidLock;
+                SwitchOverride.setManual(instance.serverList[serverId].switches[entityId], value);
+            }
             client.setInstance(guildId, instance);
 
             rustplus.interactionSwitches.push(entityId);
