@@ -102,10 +102,10 @@ module.exports = (client, guild) => {
         else {
             const notificationSettings = client.readNotificationSettingsTemplate();
 
-            /* Settings that no longer exist are removed */
-            for (const key of Object.keys(instance.notificationSettings)) {
-                if (!notificationSettings.hasOwnProperty(key)) delete instance.notificationSettings[key];
-            }
+            /* Settings the bot used to have and removed on purpose. Only these are deleted: anything
+               else not in the template is kept, so a mistake in the template never loses a setting. */
+            const RETIRED_SETTINGS = ['cargoNearBaseSetting', 'marketBargainSetting'];
+            for (const key of RETIRED_SETTINGS) delete instance.notificationSettings[key];
             for (const [key, value] of Object.entries(notificationSettings)) {
                 if (!instance.notificationSettings.hasOwnProperty(key)) {
                     instance.notificationSettings[key] = value;

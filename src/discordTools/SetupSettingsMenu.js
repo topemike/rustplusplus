@@ -281,7 +281,10 @@ async function setupNotificationSettings(client, guildId, channel) {
                 `resources/images/settings/notification_settings_logo_${instance.generalSettings.language}.png`))]
     });
 
+    /* Only the settings the bot knows (an unknown one is kept in the file but not shown) */
+    const template = client.readNotificationSettingsTemplate();
     for (const setting in instance.notificationSettings) {
+        if (!template.hasOwnProperty(setting)) continue;
         await client.messageSend(channel, {
             embeds: [DiscordEmbeds.getEmbed({
                 color: Constants.COLOR_SETTINGS,
