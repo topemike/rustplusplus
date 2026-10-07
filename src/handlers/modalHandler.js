@@ -221,6 +221,16 @@ module.exports = async (client, interaction) => {
     }
     else if (interaction.customId === 'MarketBoardAdd') {
         const MarketHandler = require('./marketHandler.js');
+        if (!MarketHandler.canManageBoard(interaction, instance)) {
+            await client.interactionReply(interaction, {
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_INACTIVE,
+                    description: client.intlGet(guildId, 'marketBoardNoPermission')
+                })],
+                ephemeral: true
+            });
+            return;
+        }
         const text = interaction.fields.getTextInputValue('MarketBoardItems');
         MarketHandler.ensureBoard(instance, client.items);
         const result = MarketHandler.addToBoard(instance, client.items, text);

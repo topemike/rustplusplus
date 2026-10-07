@@ -265,7 +265,24 @@ async function removeEntry(client, guildId, entryId) {
     return true;
 }
 
+/**
+ *  Who may change the #market board: Discord administrators, or members with the bot's role (/role).
+ *  Without a bot role, only administrators.
+ */
+function canManageBoard(interaction, instance) {
+    const member = interaction.member;
+    if (!member) return false;
+    if (member.permissions && member.permissions.has && member.permissions.has(Discord.PermissionFlagsBits.Administrator)) {
+        return true;
+    }
+    const role = instance.role;
+    if (!role || !member.roles || !member.roles.cache) return false;
+    return member.roles.cache.has ? member.roles.cache.has(role) :
+        member.roles.cache.some(r => r.id === role);
+}
+
 module.exports = {
+    canManageBoard: canManageBoard,
     handler: async function (rustplus, client) {
         await updateBoard(client, rustplus);
     },

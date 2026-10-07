@@ -1014,5 +1014,6 @@
     "raidActionsOff": "🛡️ Turned off: {targets} (until you say otherwise)",
     "switchRaidLockTitle": "🚨 Set by the raid alarm",
     "switchRaidLockDesc": "Turned off by the raid alarm. It stays like this, ignoring its automatic mode, until you press BACK TO AUTO, choose the mode again or use its command.",
-    "raidEndedLockedReminder": "Still as the alarm left them: {targets}. Press BACK TO AUTO on each one (or use its command) when you want."
+    "raidEndedLockedReminder": "Still as the alarm left them: {targets}. Press BACK TO AUTO on each one (or use its command) when you want.",
+    "marketBoardNoPermission": "Only Discord administrators or members with the bot role (/role) can change the market board."
 }

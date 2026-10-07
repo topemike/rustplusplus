@@ -1014,5 +1014,6 @@
     "raidActionsOff": "🛡️ Apagado: {targets} (hasta que lo indiquéis)",
     "switchRaidLockTitle": "🚨 Puesto por la alarma de raid",
     "switchRaidLockDesc": "Lo apagó la alarma de raid. Se queda así, sin hacer caso a su modo automático, hasta que pulséis VOLVER A AUTOMÁTICO, volváis a elegir el modo o uséis su comando.",
-    "raidEndedLockedReminder": "Siguen como los dejó la alarma: {targets}. Pulsad VOLVER A AUTOMÁTICO en cada uno (o usad su comando) cuando queráis."
+    "raidEndedLockedReminder": "Siguen como los dejó la alarma: {targets}. Pulsad VOLVER A AUTOMÁTICO en cada uno (o usad su comando) cuando queráis.",
+    "marketBoardNoPermission": "Solo los administradores del Discord o quien tenga el rol del bot (/role) pueden cambiar el tablón del mercado."
 }
