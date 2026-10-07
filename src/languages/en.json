@@ -1006,6 +1006,8 @@
     "trackerPlayerRemoved": "Removed from the tracker: {name}.",
     "trackerPlayerNotInTracker": "No player of this tracker matches \"{id}\". Use the Steam ID, a Steam or BattleMetrics link, the BattleMetrics id or the exact name.",
     "switchAutoPausedTitle": "⏸️ Automatic mode paused",
-    "switchAutoPausedDesc": "It was changed by hand, so the automatic mode leaves it alone until the situation changes (e.g. everyone leaves or logs off). Press the button to give control back to it now.",
-    "switchAutoResumeCap": "BACK TO AUTO"
+    "switchAutoPausedDesc": "Changed with a command or from Discord, so the automatic mode leaves it alone until the situation changes (e.g. everyone leaves or logs off). Press the button, or choose the mode again, to give control back to it now.",
+    "switchAutoResumeCap": "BACK TO AUTO",
+    "switchBackToAutoIn": " Back to automatic mode in {time}.",
+    "switchBackToAuto": "{device}: back to automatic mode."
 }

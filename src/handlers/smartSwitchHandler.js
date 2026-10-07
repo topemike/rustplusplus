@@ -511,14 +511,29 @@ module.exports = {
         }
 
         const time = Timer.secondsToFullScale(timeSeconds);
-        str += client.intlGet(guildId, 'automaticallyTurnBackOnOff', {
-            status: active ? offCap : onCap,
-            time: time
-        });
+        /* With an automatic mode (proximity / online), when the time is up the mode decides again */
+        const backToAuto = SwitchOverride.OVERRIDABLE_MODES.includes(switches[entityId].autoDayNightOnOff);
+        str += backToAuto ?
+            client.intlGet(guildId, 'switchBackToAutoIn', { time: time }) :
+            client.intlGet(guildId, 'automaticallyTurnBackOnOff', {
+                status: active ? offCap : onCap,
+                time: time
+            });
 
         rustplus.currentSwitchTimeouts[entityId] = setTimeout(async function () {
             const instance = client.getInstance(guildId);
             if (!instance.serverList[serverId].switches.hasOwnProperty(entityId)) return;
+            delete rustplus.currentSwitchTimeouts[entityId];
+
+            if (SwitchOverride.OVERRIDABLE_MODES.includes(instance.serverList[serverId].switches[entityId].autoDayNightOnOff)) {
+                SwitchOverride.clear(instance.serverList[serverId].switches[entityId]);
+                client.setInstance(guildId, instance);
+                DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                rustplus.sendInGameMessage(client.intlGet(guildId, 'switchBackToAuto', {
+                    device: instance.serverList[serverId].switches[entityId].name
+                }));
+                return;
+            }
 
             await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, !active);
 
