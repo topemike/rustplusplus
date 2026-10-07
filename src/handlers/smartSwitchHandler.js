@@ -425,6 +425,13 @@ module.exports = {
         if (!entityId) return false;
 
         const entityCommand = `${prefix}${switches[entityId].command}`;
+        /* Also understood: "encender/encendido/apagar/apagado" (and any case), e.g. "!sam encendido 2m" */
+        const words = command.slice(entityCommand.length).trim().split(/\s+/);
+        const word = (words[0] || '').toLowerCase();
+        if ([onEn, onLang, 'on', 'encender', 'encendido'].includes(word)) words[0] = onEn;
+        else if ([offEn, offLang, 'off', 'apagar', 'apagado'].includes(word)) words[0] = offEn;
+        command = `${entityCommand} ${words.join(' ')}`.trim();
+
         let rest = command.replace(`${entityCommand} ${onEn}`, '');
         rest = rest.replace(`${entityCommand} ${onLang}`, '');
         rest = rest.replace(`${entityCommand} ${offEn}`, '');
