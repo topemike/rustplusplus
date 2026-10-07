@@ -1004,5 +1004,8 @@
     "wipeCleanupWorking": "Cleaning up the devices that no longer exist…",
     "trackerPlayerLookupFailed": "Could not look the player up right now (Steam or BattleMetrics did not answer). Try again in a moment.",
     "trackerPlayerRemoved": "Removed from the tracker: {name}.",
-    "trackerPlayerNotInTracker": "No player of this tracker matches \"{id}\". Use the Steam ID, a Steam or BattleMetrics link, the BattleMetrics id or the exact name."
+    "trackerPlayerNotInTracker": "No player of this tracker matches \"{id}\". Use the Steam ID, a Steam or BattleMetrics link, the BattleMetrics id or the exact name.",
+    "switchAutoPausedTitle": "⏸️ Automatic mode paused",
+    "switchAutoPausedDesc": "It was changed by hand, so the automatic mode leaves it alone until the situation changes (e.g. everyone leaves or logs off). Press the button to give control back to it now.",
+    "switchAutoResumeCap": "BACK TO AUTO"
 }

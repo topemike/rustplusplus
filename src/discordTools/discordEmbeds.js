@@ -58,17 +58,26 @@ module.exports = {
         const entity = instance.serverList[serverId].switches[entityId];
         const grid = entity.location !== null ? ` (${entity.location})` : '';
 
+        const fields = [{
+            name: Client.client.intlGet(guildId, 'customCommand'),
+            value: `\`${instance.generalSettings.prefix}${entity.command}\``,
+            inline: true
+        }];
+        if (require('../util/switchOverride.js').isPaused(entity)) {
+            fields.push({
+                name: Client.client.intlGet(guildId, 'switchAutoPausedTitle'),
+                value: Client.client.intlGet(guildId, 'switchAutoPausedDesc'),
+                inline: false
+            });
+        }
+
         return module.exports.getEmbed({
             title: `${entity.name}${grid}`,
             color: entity.active ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE,
             description: `**ID**: \`${entityId}\``,
             thumbnail: `attachment://${entity.image}`,
             footer: { text: `${entity.server}` },
-            fields: [{
-                name: Client.client.intlGet(guildId, 'customCommand'),
-                value: `\`${instance.generalSettings.prefix}${entity.command}\``,
-                inline: true
-            }],
+            fields: fields,
             timestamp: true
         });
     },

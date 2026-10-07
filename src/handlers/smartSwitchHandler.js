@@ -233,9 +233,15 @@ module.exports = {
                         shouldBeOn = true;
                     }
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -270,9 +276,15 @@ module.exports = {
                         shouldBeOn = false;
                     }
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -304,9 +316,15 @@ module.exports = {
                 for (const player of rustplus.team.players) {
                     if (player.isOnline) shouldBeOn = true;
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
@@ -338,9 +356,15 @@ module.exports = {
                 for (const player of rustplus.team.players) {
                     if (player.isOnline) shouldBeOn = false;
                 }
+                const wasPaused = SwitchOverride.isPaused(content);
                 if (SwitchOverride.respectManual(content, shouldBeOn)) {
                     client.setInstance(guildId, instance);
                     continue;
+                }
+                if (wasPaused && content.active === shouldBeOn) {
+                    /* Back to automatic without changing the switch: remove the "paused" notice */
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 }
 
                 if ((shouldBeOn && !content.active) || (!shouldBeOn && content.active)) {
