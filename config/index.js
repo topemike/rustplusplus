@@ -105,9 +105,11 @@ module.exports = {
         sessionSecret: process.env.RPP_WEB_SESSION_SECRET || ''
     },
     backup: {
-        /* Daily backup of instances/ and credentials/ */
+        /* Daily backup of instances/ and credentials/, encrypted */
         enabled: process.env.RPP_BACKUP_ENABLED !== 'false',
         directory: process.env.RPP_BACKUP_DIR || 'logs/backups',
-        keepDays: parseInt(process.env.RPP_BACKUP_KEEP_DAYS) || 14
+        keepDays: parseInt(process.env.RPP_BACKUP_KEEP_DAYS) || 14,
+        /* Key to encrypt the backups. Empty: a random key is created in instances/backup.key */
+        key: process.env.RPP_BACKUP_KEY || ''
     }
 };
