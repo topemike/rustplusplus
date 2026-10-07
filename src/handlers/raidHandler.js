@@ -305,6 +305,20 @@ async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, n
  */
 async function onPluginAlarm(client, rustplus, guildId, serverId, title, message, now = Date.now()) {
     const alarm = { name: title || 'Raid alarm', message: message || '', everyone: true };
+    /* It is a raid too: do what the raid-mode Smart Alarms do (e.g. "sammode off": SAM to attack mode) */
+    const server = client.getInstance(guildId).serverList[serverId];
+    const merged = { groups: [], switches: [], offGroups: [], offSwitches: [], holdMinutes: 0 };
+    for (const a of Object.values((server && server.alarms) || {})) {
+        if (a.raidMode === false || !a.actions) continue;
+        for (const k of ['groups', 'switches', 'offGroups', 'offSwitches']) {
+            for (const id of a.actions[k] || []) if (!merged[k].includes(id)) merged[k].push(id);
+        }
+        merged.holdMinutes = Math.max(merged.holdMinutes, a.actions.holdMinutes || 0);
+    }
+    if (['groups', 'switches', 'offGroups', 'offSwitches'].some(k => merged[k].length > 0)) {
+        if (!merged.holdMinutes) delete merged.holdMinutes;
+        alarm.actions = merged;
+    }
     await trigger(client, rustplus, guildId, serverId, `plugin:${alarm.name}`, alarm, false, now);
 }
 

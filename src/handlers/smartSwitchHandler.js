@@ -183,8 +183,19 @@ module.exports = {
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
             /* Held on by an alarm action: automatic modes must not change it */
             if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
-            if (content.autoDayNightOnOff === 3) { /* AUTO-ON */
+            if (content.autoDayNightOnOff === 3) { /* ALWAYS ON: what the Discord menu says */
+                /* An order by hand (command / Discord button) prevails until its time is up or VOLVER A AUTOMÁTICO */
+                const wasPaused = SwitchOverride.isPaused(content);
+                if (SwitchOverride.respectManual(content, true)) {
+                    client.setInstance(guildId, instance);
+                    continue;
+                }
+                if (wasPaused) {
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                }
                 if (content.active) continue;
+                rustplus.log(client.intlGet(null, 'infoCap'), `Always ON: ${content.name} (${content.command}) -> ON.`);
 
                 instance.serverList[serverId].switches[entityId].active = true;
                 client.setInstance(guildId, instance);
@@ -208,8 +219,19 @@ module.exports = {
                 DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 changedSwitches.push(entityId);
             }
-            else if (content.autoDayNightOnOff === 4) { /* AUTO-OFF */
+            else if (content.autoDayNightOnOff === 4) { /* ALWAYS OFF: what the Discord menu says */
+                /* An order by hand (command / Discord button) prevails until its time is up or VOLVER A AUTOMÁTICO */
+                const wasPaused = SwitchOverride.isPaused(content);
+                if (SwitchOverride.respectManual(content, false)) {
+                    client.setInstance(guildId, instance);
+                    continue;
+                }
+                if (wasPaused) {
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                }
                 if (!content.active) continue;
+                rustplus.log(client.intlGet(null, 'infoCap'), `Always OFF: ${content.name} (${content.command}) -> OFF.`);
 
                 instance.serverList[serverId].switches[entityId].active = false;
                 client.setInstance(guildId, instance);
