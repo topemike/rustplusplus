@@ -7,11 +7,11 @@
     "addSwitchCap": "ADD SWITCH",
     "afkCap": "AFK",
     "airfield": "Airfield",
-    "alarmActionsDesc": "{targets} (kept on for {minutes} min)",
-    "alarmActionsField": "When triggered, turn on",
-    "alarmActionsLabel": "Turn on when triggered (switches/groups)",
+    "alarmActionsDesc": "Turns on: {targets} ({minutes} min)",
+    "alarmActionsField": "When triggered",
+    "alarmActionsLabel": "On trigger: turn on (-name: turn off)",
     "alarmActionsNone": "Nothing. Configure it with EDIT.",
-    "alarmActionsPlaceholder": "Names or commands, comma separated",
+    "alarmActionsPlaceholder": "E.g. turrets, -sam (comma separated)",
     "alarmHaveNotBeenTriggeredYet": "The alarm {alarm} have not been triggered yet.",
     "alarmHoldMinutesLabel": "Minutes to keep them on",
     "alias": "Alias",
@@ -1009,5 +1009,10 @@
     "switchAutoPausedDesc": "Changed with a command or from Discord, so the automatic mode leaves it alone until the situation changes (e.g. everyone leaves or logs off). Press the button, or choose the mode again, to give control back to it now.",
     "switchAutoResumeCap": "BACK TO AUTO",
     "switchBackToAutoIn": " Back to automatic mode in {time}.",
-    "switchBackToAuto": "{device}: back to automatic mode."
+    "switchBackToAuto": "{device}: back to automatic mode.",
+    "alarmActionsOffDesc": "Turns off: {targets} (until you say otherwise)",
+    "raidActionsOff": "🛡️ Turned off: {targets} (until you say otherwise)",
+    "switchRaidLockTitle": "🚨 Set by the raid alarm",
+    "switchRaidLockDesc": "Turned off by the raid alarm. It stays like this, ignoring its automatic mode, until you press BACK TO AUTO, choose the mode again or use its command.",
+    "raidEndedLockedReminder": "Still as the alarm left them: {targets}. Press BACK TO AUTO on each one (or use its command) when you want."
 }

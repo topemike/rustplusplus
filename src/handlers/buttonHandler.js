@@ -670,6 +670,7 @@ module.exports = async (client, interaction) => {
         const active = (interaction.customId.startsWith('SmartSwitchOn')) ? true : false;
         const prevActive = server.switches[ids.entityId].active;
         server.switches[ids.entityId].active = active;
+        delete server.switches[ids.entityId].raidLock;     /* an order: the raid lock ends */
         SwitchOverride.setManual(server.switches[ids.entityId], active);
         client.setInstance(guildId, instance);
 

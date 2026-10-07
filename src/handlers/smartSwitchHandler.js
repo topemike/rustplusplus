@@ -70,7 +70,7 @@ module.exports = {
         if (rustplus.time.isTurnedDay(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
                 /* Held on by an alarm action: automatic modes must not change it */
-                if (content.holdUntil && Date.now() < content.holdUntil) continue;
+                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = true;
                     client.setInstance(guildId, instance);
@@ -122,7 +122,7 @@ module.exports = {
         else if (rustplus.time.isTurnedNight(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
                 /* Held on by an alarm action: automatic modes must not change it */
-                if (content.holdUntil && Date.now() < content.holdUntil) continue;
+                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = false;
                     client.setInstance(guildId, instance);
@@ -174,7 +174,7 @@ module.exports = {
 
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
             /* Held on by an alarm action: automatic modes must not change it */
-            if (content.holdUntil && Date.now() < content.holdUntil) continue;
+            if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
             if (content.autoDayNightOnOff === 3) { /* AUTO-ON */
                 if (content.active) continue;
 
@@ -557,6 +557,7 @@ module.exports = {
 
         const prevActive = switches[entityId].active;
         switches[entityId].active = active;
+        delete switches[entityId].raidLock;     /* an order: the raid lock ends */
         SwitchOverride.setManual(switches[entityId], active);
         client.setInstance(guildId, instance);
 

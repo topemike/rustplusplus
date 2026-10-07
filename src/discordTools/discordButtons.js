@@ -174,7 +174,8 @@ module.exports = {
                 emoji: '🗑️'
             }));
         /* Automatic mode paused by a change by hand: one click to give control back to it */
-        if (require('../util/switchOverride.js').isPaused(entity)) {
+        const SO = require('../util/switchOverride.js');
+        if (SO.isPaused(entity) || SO.isRaidLocked(entity)) {
             row.addComponents(module.exports.getButton({
                 customId: `SmartSwitchResumeAuto${identifier}`,
                 label: Client.client.intlGet(guildId, 'switchAutoResumeCap'),
