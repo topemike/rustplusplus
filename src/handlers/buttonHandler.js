@@ -1149,30 +1149,10 @@ module.exports = async (client, interaction) => {
         await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
     }
     else if (interaction.customId === 'MarketBoardAdd') {
-        if (!require('./marketHandler.js').canManageBoard(interaction, instance)) {
-            await client.interactionReply(interaction, {
-                embeds: [DiscordEmbeds.getEmbed({
-                    color: Constants.COLOR_INACTIVE,
-                    description: client.intlGet(guildId, 'marketBoardNoPermission')
-                })],
-                ephemeral: true
-            });
-            return;
-        }
         const modal = DiscordModals.getMarketBoardAddModal(guildId);
         await interaction.showModal(modal);
     }
     else if (interaction.customId.startsWith('MarketBoardRemove')) {
-        if (!require('./marketHandler.js').canManageBoard(interaction, instance)) {
-            await client.interactionReply(interaction, {
-                embeds: [DiscordEmbeds.getEmbed({
-                    color: Constants.COLOR_INACTIVE,
-                    description: client.intlGet(guildId, 'marketBoardNoPermission')
-                })],
-                ephemeral: true
-            });
-            return;
-        }
         const ids = JSON.parse(interaction.customId.replace('MarketBoardRemove', ''));
         const removed = await require('./marketHandler.js').removeEntry(client, guildId, ids.id);
 
