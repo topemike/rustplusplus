@@ -56,7 +56,7 @@ module.exports = {
     },
     raid: {
         /* Grouped raid alarms: reminder every N minutes while nobody acknowledges */
-        reminderMinutes: parseInt(process.env.RPP_RAID_REMINDER_MINUTES) || 5,
+        reminderMinutes: parseInt(process.env.RPP_RAID_REMINDER_MINUTES) || 2,
         /* The raid is considered over after N minutes without alarm triggers */
         quietMinutes: parseInt(process.env.RPP_RAID_QUIET_MINUTES) || 10,
         /* Minimum seconds between edits of the raid message */

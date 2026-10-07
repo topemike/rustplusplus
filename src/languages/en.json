@@ -718,7 +718,7 @@
     "raidModeOffDesc": "Off: one notification per trigger.",
     "raidModeOnDesc": "On: triggers are grouped into one raid message, with reminders until someone acknowledges it.",
     "raidNotAcknowledged": "Not acknowledged yet: reminder every {minutes} min.",
-    "raidReminderDesc": "{count} triggers since {started}. Press the button on the raid message.",
+    "raidReminderDesc": "{count} triggers since {started}. Press I'M ON IT on the pinned raid alert.",
     "raidReminderTitle": "🚨 The raid is still going on and nobody has acknowledged it",
     "ranch": "Ranch",
     "ratelimited": "RATELIMITED",
@@ -1020,6 +1020,5 @@
     "serverConnectPurgeDone": "Connected to {server}. Deleted {servers} servers and {trackers} trackers from before.",
     "summaryDeepSeaTitle": "🌊 Deep Sea",
     "summaryDeepSeaFixed": "Open {open}, then closed {closed} until the next one (fixed cycle).",
-    "summaryDeepSeaRandom": "Open {open}, then closed between {closedMin} and {closedMax} until the next one.",
-    "raidReminderEndedTitle": "🚨 There was a raid and nobody has seen it yet"
+    "summaryDeepSeaRandom": "Open {open}, then closed between {closedMin} and {closedMax} until the next one."
 }

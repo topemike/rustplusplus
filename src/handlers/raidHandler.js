@@ -20,10 +20,11 @@
 
 /*
  *  Raid incidents: groups Smart Alarm triggers into a single Discord message.
- *  - First trigger: one pinned message with @everyone and an "I'm on it" button.
+ *  - First trigger: one pinned message with @everyone and an "I'm on it" button (the only one).
  *  - Further triggers only update that message (counter, last trigger), throttled.
- *  - Until someone presses the button: a reminder with @everyone every N minutes, even after the
- *    raid is over (asleep people must wake up), and the message stays pinned.
+ *  - While the raid lasts and nobody pressed the button: every N minutes (2) the same reminder is
+ *    posted again with @everyone (the previous one is deleted, so there is only ever one).
+ *    It stops when someone presses the button, the raid ends or the alarm stops responding.
  *  - After M minutes without triggers the raid is considered over and a summary is posted.
  *  - Alarm actions: switches / switch groups turned on when the alarm triggers, with a hold
  *    time during which automatic switch modes do not turn them off.
@@ -175,7 +176,7 @@ function getIncidentEmbed(client, guildId, incident, now = Date.now()) {
     if (incident.acknowledgedBy) {
         description += `\n${client.intlGet(guildId, 'raidAcknowledgedBy', { user: `<@${incident.acknowledgedBy}>` })}`;
     }
-    else {
+    else if (!incident.endedAt) {
         description += `\n${client.intlGet(guildId, 'raidNotAcknowledged', {
             minutes: Math.round(s.reminderMs / 60000)
         })}`;
@@ -222,7 +223,7 @@ function getAckButton(client, guildId, incident) {
             .setLabel(client.intlGet(guildId, 'raidAcknowledgeCap'))
             .setStyle(Discord.ButtonStyle.Primary)
             .setEmoji('\u{1F440}')
-            .setDisabled(!!incident.acknowledgedBy));    /* still usable after the raid ends */
+            .setDisabled(!!incident.acknowledgedBy || !!incident.endedAt));
 }
 
 async function sendOrEditIncident(client, guildId, incident, mention) {
@@ -247,8 +248,8 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
             if (!incident.channelId) incident.channelId = raidChannel(instance);
             const message = await DiscordMessages.sendMessage(guildId, content, incident.messageId, incident.channelId);
             if (message && message.id) incident.messageId = message.id;
-            /* Pinned until someone has seen it, even after the raid ends */
-            await setPinned(client, guildId, incident, !incident.acknowledgedBy);
+            /* Pinned until someone has seen it or the raid is over */
+            await setPinned(client, guildId, incident, !incident.endedAt && !incident.acknowledgedBy);
             incident.lastEditAt = Date.now();
             incident.dirty = false;
         } while (incident.resend);
@@ -260,25 +261,30 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
 
 async function sendReminder(client, guildId, incident) {
     const instance = client.getInstance(guildId);
+    const channelId = incident.channelId || raidChannel(instance);
+    /* Always the same single reminder: the previous one is removed and posted again (a new message
+       is what makes @everyone ring). The button is only on the raid message. */
+    await deleteReminder(guildId, incident);
     const content = {
         content: getMention(client, guildId),
         embeds: [DiscordEmbeds.getEmbed({
             color: Constants.COLOR_INACTIVE,
-            title: client.intlGet(guildId, incident.endedAt ? 'raidReminderEndedTitle' : 'raidReminderTitle'),
+            title: client.intlGet(guildId, 'raidReminderTitle'),
             description: client.intlGet(guildId, 'raidReminderDesc', {
                 count: incident.count,
                 started: `<t:${Math.floor(incident.startedAt / 1000)}:R>`
             })
         })]
     };
-    if (!content.content) delete content.content;
-    /* Each reminder has its own I'M ON IT button: the raid can be stopped from any of them */
-    content.components = [getAckButton(client, guildId, incident)];
-    const message = await DiscordMessages.sendMessage(guildId, content, null, incident.channelId || raidChannel(instance));
-    if (message && message.id) {
-        if (!incident.reminderIds) incident.reminderIds = [];
-        incident.reminderIds.push(message.id);
-    }
+    const message = await DiscordMessages.sendMessage(guildId, content, null, channelId);
+    if (message && message.id) incident.reminderId = message.id;
+}
+
+async function deleteReminder(guildId, incident) {
+    if (!incident.reminderId) return;
+    try { await DiscordTools.deleteMessageById(guildId, incident.channelId, incident.reminderId); }
+    catch (e) { /* already gone */ }
+    incident.reminderId = null;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -380,14 +386,14 @@ async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isS
 async function tick(client, now = Date.now()) {
     const s = settings();
     for (const [guildId, incident] of Object.entries(incidents)) {
-        /* A finished raid that somebody has seen needs nothing more */
-        if (incident.endedAt && incident.acknowledgedBy) continue;
+        if (incident.endedAt) continue;
         try {
-            if (!incident.endedAt && now - incident.lastTriggerAt >= s.quietMs) {
+            if (now - incident.lastTriggerAt >= s.quietMs) {
                 await endIncident(client, guildId, incident, now);
+                continue;
             }
 
-            /* Nobody has seen it: @everyone again every few minutes until someone presses the button */
+            /* Nobody has seen it yet: the reminder rings again (@everyone) every few minutes */
             if (!incident.acknowledgedBy && now - incident.lastReminderAt >= s.reminderMs) {
                 incident.lastReminderAt = now;
                 await sendReminder(client, guildId, incident);
@@ -408,6 +414,7 @@ async function endIncident(client, guildId, incident, now = Date.now(), alarmsLo
     if (incident.endedAt) return;
     incident.endedAt = now;
     incident.alarmsLost = alarmsLost;
+    await deleteReminder(guildId, incident);
     await sendOrEditIncident(client, guildId, incident, false);
     require('../util/dailyStats.js').recordRaid(guildId, {
         start: incident.startedAt,
@@ -432,10 +439,8 @@ async function onAlarmLost(client, guildId, entityId, now = Date.now()) {
 async function acknowledge(client, interaction) {
     const guildId = interaction.guildId;
     const incident = incidents[guildId];
-    const fromReminder = !!incident && !!interaction.message && Array.isArray(incident.reminderIds) &&
-        incident.reminderIds.includes(interaction.message.id);
-    if (!incident || incident.acknowledgedBy || (interaction.message && incident.messageId &&
-        interaction.message.id !== incident.messageId && !fromReminder)) {
+    if (!incident || incident.endedAt || incident.acknowledgedBy ||
+        (interaction.message && incident.messageId && interaction.message.id !== incident.messageId)) {
         /* Old raid message (e.g. the bot restarted during the raid): unpin it and disable the button */
         try {
             if (!interaction.message) throw new Error("no message");
@@ -453,21 +458,12 @@ async function acknowledge(client, interaction) {
         return;
     }
     incident.acknowledgedBy = interaction.user.id;
-    if (fromReminder) {
-        /* Pressed on a reminder: disable its button, then update (and unpin) the raid message */
-        try {
-            await client.interactionUpdate(interaction, { components: [getAckButton(client, guildId, incident)] });
-        }
-        catch (e) { /* ignore */ }
-        incident.dirty = true;
-        await sendOrEditIncident(client, guildId, incident, false);
-        return;
-    }
     await client.interactionUpdate(interaction, {
         embeds: [getIncidentEmbed(client, guildId, incident)],
         components: [getAckButton(client, guildId, incident)]
     });
     await setPinned(client, guildId, incident, false);
+    await deleteReminder(guildId, incident);
     incident.lastEditAt = Date.now();
     incident.dirty = false;
 }

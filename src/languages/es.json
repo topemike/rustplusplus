@@ -718,7 +718,7 @@
     "raidModeOffDesc": "Desactivado: un aviso por cada activación.",
     "raidModeOnDesc": "Activado: las activaciones se agrupan en un solo aviso de raid, con recordatorios hasta que alguien lo vea.",
     "raidNotAcknowledged": "Nadie lo ha visto aún: recordatorio cada {minutes} min.",
-    "raidReminderDesc": "{count} activaciones desde {started}. Pulsa el botón del aviso de raid.",
+    "raidReminderDesc": "{count} activaciones desde {started}. Pulsad LO VEO en el aviso de raid fijado.",
     "raidReminderTitle": "🚨 El raid sigue y nadie lo ha visto",
     "ranch": "Rancho",
     "ratelimited": "LIMITADO",
@@ -1020,6 +1020,5 @@
     "serverConnectPurgeDone": "Conectado a {server}. Borrados {servers} servers y {trackers} trackers de antes.",
     "summaryDeepSeaTitle": "🌊 Deep Sea",
     "summaryDeepSeaFixed": "Abierto {open}, luego cerrado {closed} hasta el siguiente (ciclo fijo).",
-    "summaryDeepSeaRandom": "Abierto {open}, luego cerrado entre {closedMin} y {closedMax} hasta el siguiente.",
-    "raidReminderEndedTitle": "🚨 Ha habido un raid y nadie lo ha visto todavía"
+    "summaryDeepSeaRandom": "Abierto {open}, luego cerrado entre {closedMin} y {closedMax} hasta el siguiente."
 }
