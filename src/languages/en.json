@@ -1017,5 +1017,6 @@
     "raidEndedLockedReminder": "Still as the alarm left them: {targets}. Press BACK TO AUTO on each one (or use its command) when you want.",
     "wipeCleanupNotConnected": "The bot is not connected to that server, so it cannot check which devices are really gone. Nothing was deleted: press the button again once it is connected.",
     "wipeCleanupKept": "{kept} were kept: they answered again or the server did not reply.",
+    "deepSeaOpenedEvent": "Deep Sea opened.",
     "marketBoardNoPermission": "Only Discord administrators or members with the bot role (/role) can change the market board."
 }

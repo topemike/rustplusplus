@@ -121,7 +121,7 @@ const EVENT_KINDS = {
     heavyScientistCalledSetting: 'oilrig', chinook47DetectedSetting: 'chinook',
     travelingVendorDetectedSetting: 'vendor', travelingVendorHaltedSetting: 'vendor',
     travelingVendorLeftSetting: 'vendor', vendingMachineDetectedSetting: 'vending',
-    deepSeaSetting: 'deepsea'
+    deepSeaSetting: 'deepsea', deepSeaOpened: 'deepsea'
 };
 
 function events(guildId, sinceMs = 14 * 24 * 60 * 60 * 1000) {

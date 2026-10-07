@@ -48,7 +48,8 @@ const EVENT_GROUPS = [
     { key: 'crates', settings: ['lockedCrateDroppedSetting'] },
     { key: 'chinook', settings: ['chinook47DetectedSetting'] },
     { key: 'vendor', settings: ['travelingVendorDetectedSetting'] },
-    { key: 'deepSea', settings: ['deepSeaSetting'], text: /(open|abr)/i, exclude: /(\d+ (min|minutos))/i }
+    /* Real openings only (marked open, or the exact opening of a fixed cycle), not every warning */
+    { key: 'deepSea', settings: ['deepSeaOpened'] }
 ];
 
 const cache = new Object();

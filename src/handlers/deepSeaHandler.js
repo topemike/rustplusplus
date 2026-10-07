@@ -310,6 +310,7 @@ async function tick(client, now = Date.now()) {
             const setting = rustplus.notificationSettings.deepSeaSetting;
             if (!setting) continue;
             for (const w of due) {
+                if (w.type === 'openingNow') recordOpening(client, guildId, now);
                 await rustplus.sendEvent(setting, warningText(client, guildId, w, now), 'deepsea',
                     ['mayOpen', 'mayOpenReminder', 'overdue', 'opensIn', 'openingNow'].includes(w.type) ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE);
             }
@@ -342,9 +343,20 @@ function command(rustplus, client, text, now = Date.now()) {
     return statusText(client, guildId, getDeepSea(server), now);
 }
 
+/* One opening for the daily summary; a mark and the fixed-cycle opening of the same time count once */
+function recordOpening(client, guildId, at) {
+    try {
+        const DailyStats = require('../util/dailyStats.js');
+        const already = DailyStats.getEvents(guildId).some(e => e.s === 'deepSeaOpened' && Math.abs(e.t - at) < 60 * MINUTE_MS);
+        if (!already) DailyStats.recordEvent(guildId, 'deepSeaOpened', client.intlGet(guildId, 'deepSeaOpenedEvent'), at);
+    }
+    catch (e) { /* not critical */ }
+}
+
 function markAndDescribe(client, guildId, instance, server, opened, now = Date.now(), lateMinutes = 0) {
     const fixedBefore = server.deepSea ? fixedClosedMs(server.deepSea) : null;
     const result = mark(server, opened, now - lateMinutes * MINUTE_MS);
+    if (opened) recordOpening(client, guildId, now - lateMinutes * MINUTE_MS);
     const fixedAfter = fixedClosedMs(server.deepSea);
     client.setInstance(guildId, instance);
     let text = client.intlGet(guildId, opened ? 'deepSeaMarkedOpen' : 'deepSeaMarkedClosed');
