@@ -281,21 +281,24 @@ function getPurgeAllMessage(client, guildId) {
 }
 
 /**
- *  Deletes everything about every server: disconnects the bot, empties the device channels and
- *  #information, then removes all servers, trackers and history (see purgeOtherServers).
+ *  Leaves the bot at zero, as if it had never been used, except for `keepServerId` (the server
+ *  about to be connected; null = keep nothing). Disconnects first (and stops any pending
+ *  reconnect), empties the device channels and #information, then removes every other server,
+ *  trackers and history (see purgeOtherServers). Channels, settings and credentials stay: on the
+ *  next connection the bot fills the channels again for the new server.
  */
-async function purgeEverything(client, guildId) {
-    const instance = client.getInstance(guildId);
+async function purgeAllExcept(client, guildId, keepServerId) {
+    try { client.resetRustplusVariables(guildId); } catch (e) { /* not critical */ }
     const rustplus = client.rustplusInstances[guildId];
     if (rustplus) {
         rustplus.isDeleted = true;
         try { rustplus.disconnect(); } catch (e) { /* already disconnected */ }
         delete client.rustplusInstances[guildId];
     }
+    const instance = client.getInstance(guildId);
     instance.activeServer = null;
     for (const key of Object.keys(instance.informationMessageId || {})) instance.informationMessageId[key] = null;
     client.setInstance(guildId, instance);
-    try { client.resetRustplusVariables(guildId); } catch (e) { /* not critical */ }
 
     for (const channelId of [instance.channelId.switches, instance.channelId.switchGroups,
         instance.channelId.storageMonitors, instance.channelId.information]) {
@@ -303,12 +306,18 @@ async function purgeEverything(client, guildId) {
         try { await DiscordTools.clearTextChannel(guildId, channelId, 1000); }
         catch (e) { /* ignore */ }
     }
-    return await purgeOtherServers(client, guildId, null);
+    return await purgeOtherServers(client, guildId, keepServerId);
+}
+
+/* Deletes everything about every server (/limpieza todo) */
+async function purgeEverything(client, guildId) {
+    return await purgeAllExcept(client, guildId, null);
 }
 
 module.exports = {
     getPurgeAllMessage: getPurgeAllMessage,
     purgeEverything: purgeEverything,
+    purgeAllExcept: purgeAllExcept,
     getServerChangeMessage: getServerChangeMessage,
     getConnectPurgeMessage: getConnectPurgeMessage,
     purgeOtherServers: purgeOtherServers,

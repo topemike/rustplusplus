@@ -1013,7 +1013,7 @@
     "wipeCleanupKept": "Se conservan {kept} que responden (son de este wipe).",
     "deepSeaOpenedEvent": "Deep Sea abierto.",
     "serverConnectPurgeTitle": "Conectar a {server}: se borrará todo lo del server anterior",
-    "serverConnectPurgeDesc": "El bot aún guarda datos de:\n{servers}\n\nPara usar el bot con el server nuevo se borra todo lo del anterior: sus dispositivos (switches, grupos, alarmas, storage monitors), Deep Sea y base, {trackers} trackers, el historial de eventos y raids, y los mensajes de #events, #activity y #base. No se puede deshacer.",
+    "serverConnectPurgeDesc": "El bot aún guarda datos de:\n{servers}\n\nConectar al server nuevo deja el bot a cero: se borra todo lo de antes (sus dispositivos, grupos, alarmas y storage monitors, Deep Sea y base, {trackers} trackers, el historial de eventos y raids y los mensajes antiguos de los canales del bot). Los canales, los ajustes y las credenciales se quedan, y se vuelven a rellenar con el server nuevo. No se puede deshacer.",
     "serverConnectPurgeCap": "BORRAR LO ANTERIOR Y CONECTAR",
     "serverConnectPurgeNoPermission": "Cambiar de server borra todo lo del anterior: solo pueden hacerlo los administradores del Discord o el hoster actual.",
     "serverConnectPurgeWorking": "Borrando el server anterior y conectando a {server}…",

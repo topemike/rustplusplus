@@ -470,22 +470,11 @@ module.exports = async (client, interaction) => {
             components: []
         });
 
-        /* Stop the current connection and any pending reconnect BEFORE deleting its server:
-           a reconnect timer firing during the purge would look for a server that no longer exists */
-        client.resetRustplusVariables(guildId);
-        const current = client.rustplusInstances[guildId];
-        if (current) {
-            current.isDeleted = true;
-            try { current.disconnect(); } catch (e) { /* already disconnected */ }
-            delete client.rustplusInstances[guildId];
-        }
-        const before = client.getInstance(guildId);
-        before.activeServer = null;
-        client.setInstance(guildId, before);
-
+        /* The bot back to zero, keeping only the new server: disconnects (and stops any pending
+           reconnect) before deleting, empties the channels' messages, removes everything else */
         let removed = { servers: 0, trackers: 0 };
         try {
-            removed = await require('../util/serverLifecycle.js').purgeOtherServers(client, guildId, ids.serverId);
+            removed = await require('../util/serverLifecycle.js').purgeAllExcept(client, guildId, ids.serverId);
         }
         finally {
             client.connectPurging[guildId] = false;
