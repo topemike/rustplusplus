@@ -210,7 +210,8 @@ module.exports = {
             content: entity.everyone ? '@everyone' : ''
         }
 
-        await module.exports.sendMessage(guildId, content, null, instance.channelId.activity);
+        /* Storage monitor / Tool Cupboard messages go to #base (#activity if it does not exist) */
+        await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
     sendStorageMonitorDisconnectNotificationMessage: async function (guildId, serverId, entityId) {
@@ -224,7 +225,8 @@ module.exports = {
             content: entity.everyone ? '@everyone' : ''
         }
 
-        await module.exports.sendMessage(guildId, content, null, instance.channelId.activity);
+        /* Storage monitor / Tool Cupboard messages go to #base (#activity if it does not exist) */
+        await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
     sendStorageMonitorNotFoundMessage: async function (guildId, serverId, entityId) {
@@ -238,7 +240,8 @@ module.exports = {
             content: entity.everyone ? '@everyone' : ''
         }
 
-        await module.exports.sendMessage(guildId, content, null, instance.channelId.activity);
+        /* Storage monitor / Tool Cupboard messages go to #base (#activity if it does not exist) */
+        await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
     sendSmartSwitchNotFoundMessage: async function (guildId, serverId, entityId) {
@@ -251,7 +254,8 @@ module.exports = {
                 Path.join(__dirname, '..', `resources/images/electrics/${entity.image}`))]
         }
 
-        await module.exports.sendMessage(guildId, content, null, instance.channelId.activity);
+        /* Base devices go to #base (#activity if it does not exist) */
+        await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
     sendSmartAlarmNotFoundMessage: async function (guildId, serverId, entityId) {
@@ -265,7 +269,8 @@ module.exports = {
             content: entity.everyone ? '@everyone' : ''
         }
 
-        await module.exports.sendMessage(guildId, content, null, instance.channelId.activity);
+        /* Base devices go to #base (#activity if it does not exist) */
+        await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
     sendSmartAlarmTriggerMessage: async function (guildId, serverId, entityId) {
