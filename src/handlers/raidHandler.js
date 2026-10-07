@@ -339,6 +339,10 @@ async function endIncident(client, guildId, incident, now = Date.now(), alarmsLo
 async function onAlarmLost(client, guildId, entityId, now = Date.now()) {
     const incident = incidents[guildId];
     if (!incident || incident.endedAt || !incident.alarms[entityId]) return;
+    /* A restarting server says nothing exists: only trust it on a stable connection */
+    const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
+    if (!rustplus || !rustplus.isOperational || !rustplus.operationalSince ||
+        now - rustplus.operationalSince < 10 * 60 * 1000) return;
     await endIncident(client, guildId, incident, now, true);
 }
 
