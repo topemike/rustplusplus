@@ -919,7 +919,7 @@
     "travelingVendorHaltedSetting": "When the Traveling Vendor stops moving, send a notification.",
     "travelingVendorLeftSetting": "When the Traveling Vendor left the map, send a notification.",
     "travelingVendorLocatedAt": "The Traveling Vendor is located at {location}.",
-    "travelingVendorLeftMap" : "The Traveling Vendor just left the map at {location}.",
+    "travelingVendorLeftMap": "The Traveling Vendor just left the map at {location}.",
     "travelingVendorNotCurrentlyOnMap": "The Traveling Vendor is not currently on the map.",
     "travelingVendorResumedAt": "The Traveling Vendor resumed moving at {location}.",
     "travelingVendorSpawnedAt": "The Traveling Vendor spawned at {location}.",
@@ -999,5 +999,10 @@
     "wipeDetected": "Wipe detected!",
     "yield": "Yield",
     "youAreAlreadyLeader": "You are already leader.",
-    "youAreNotPairedWithServer": "Leader command does not work because you're not paired with the server."
+    "youAreNotPairedWithServer": "Leader command does not work because you're not paired with the server.",
+    "cleanupOutdated": "This button is outdated (the bot is on another server or that server no longer exists). Nothing was deleted.",
+    "wipeCleanupWorking": "Cleaning up the devices that no longer exist…",
+    "trackerPlayerLookupFailed": "Could not look the player up right now (Steam or BattleMetrics did not answer). Try again in a moment.",
+    "trackerPlayerRemoved": "Removed from the tracker: {name}.",
+    "trackerPlayerNotInTracker": "No player of this tracker matches \"{id}\". Use the Steam ID, a Steam or BattleMetrics link, the BattleMetrics id or the exact name."
 }

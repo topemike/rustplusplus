@@ -52,7 +52,8 @@ module.exports = {
         return groupsId;
     },
 
-    TurnOnOffGroup: async function (client, rustplus, guildId, serverId, groupId, value) {
+    /* markManual = false when an automation (e.g. a raid alarm) changes the group, not a person */
+    TurnOnOffGroup: async function (client, rustplus, guildId, serverId, groupId, value, markManual = true) {
         const instance = client.getInstance(guildId);
 
         const switches = instance.serverList[serverId].switchGroups[groupId].switches;
@@ -77,7 +78,7 @@ module.exports = {
         for (const entityId of actionSwitches) {
             const prevActive = instance.serverList[serverId].switches[entityId].active;
             instance.serverList[serverId].switches[entityId].active = value;
-            SwitchOverride.setManual(instance.serverList[serverId].switches[entityId], value);
+            if (markManual) SwitchOverride.setManual(instance.serverList[serverId].switches[entityId], value);
             client.setInstance(guildId, instance);
 
             rustplus.interactionSwitches.push(entityId);

@@ -40,6 +40,7 @@ module.exports = {
         const commandLowerCase = command.toLowerCase();
         const prefix = rustplus.generalSettings.prefix;
 
+        let reply = null; /* result of the commands below that change state: run them once */
         if (!rustplus.isOperational) {
             return false;
         }
@@ -122,11 +123,11 @@ module.exports = {
                 commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxMarkers')}`)) {
             rustplus.sendInGameMessage(await rustplus.getCommandMarker(command, callerSteamId));
         }
-        else if (DeepSeaHandler.command(rustplus, client, command) !== null) {
-            rustplus.sendInGameMessage(DeepSeaHandler.command(rustplus, client, command));
+        else if ((reply = DeepSeaHandler.command(rustplus, client, command)) !== null) {
+            rustplus.sendInGameMessage(reply);
         }
-        else if (MarketHandler.getCommandFind(rustplus, client, command) !== null) {
-            rustplus.sendInGameMessage(MarketHandler.getCommandFind(rustplus, client, command));
+        else if ((reply = MarketHandler.getCommandFind(rustplus, client, command)) !== null) {
+            rustplus.sendInGameMessage(reply);
         }
         else if (commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxMarket')} `) ||
             commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarket')} `)) {

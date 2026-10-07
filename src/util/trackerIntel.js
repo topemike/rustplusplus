@@ -150,6 +150,22 @@ function update(guildId, trackerId, tracker, bmInstance, now = Date.now()) {
         th.offlineSince = null;
     }
 
+    /* While the game server is down (daily restart) everybody is offline: that is not news. The
+       ones who were playing when it went down are reconnecting when it is back, not logging in. */
+    const serverDown = !!bmInstance && bmInstance.server_status !== null &&
+        bmInstance.server_status !== undefined && bmInstance.server_status !== 'online';
+    if (serverDown && !th.serverDown) {
+        th.reconnecting = Object.entries(th.players)
+            .filter(([key, data]) => {
+                /* Playing, or left just before the server was seen down (BattleMetrics can lag) */
+                const l = data.sessions[data.sessions.length - 1];
+                return l && (l[1] === null || now - l[1] <= 2 * MINUTE_MS);
+            })
+            .map(([key]) => key);
+    }
+    th.serverDown = serverDown;
+    if (!Array.isArray(th.reconnecting)) th.reconnecting = [];
+
     let known = 0;
     let online = 0;
     let lastLogoutName = null;
@@ -174,7 +190,9 @@ function update(guildId, trackerId, tracker, bmInstance, now = Date.now()) {
             online++;
             if (!open) {
                 data.sessions.push([now, null]);
-                if (!resumed) th.recentLogins.push({ key: key, name: player.name, time: now });
+                const reconnect = th.reconnecting.includes(key);
+                if (reconnect) th.reconnecting = th.reconnecting.filter(k => k !== key);
+                if (!resumed && !reconnect) th.recentLogins.push({ key: key, name: player.name, time: now });
             }
         }
         else if (open) {
@@ -198,7 +216,11 @@ function update(guildId, trackerId, tracker, bmInstance, now = Date.now()) {
 
     pruneHistory(th, now);
 
-    const alertsEnabled = tracker.clanAlerts !== false;
+    if (serverDown) {
+        th.offlineSince = null;
+        th.recentLogins = [];
+    }
+    const alertsEnabled = tracker.clanAlerts !== false && !serverDown;
 
     /* Whole clan offline (confirmed for a while to ignore quick reconnects) */
     if (known >= 2) {

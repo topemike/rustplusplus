@@ -39,6 +39,7 @@ module.exports = {
         const prefix = rustplus.generalSettings.prefix;
 
         let response = null;
+        let reply = null; /* result of the commands below that change state: run them once */
         if (commandLowerCase === `${prefix}${client.intlGet('en', 'commandSyntaxAfk')}` ||
             commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxAfk')}`) {
             response = rustplus.getCommandAfk();
@@ -109,11 +110,11 @@ module.exports = {
                 commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxMarkers')}`)) {
             response = client.intlGet(rustplus.guildId, 'commandNotPossibleDiscord');
         }
-        else if (DeepSeaHandler.command(rustplus, client, command) !== null) {
-            response = DeepSeaHandler.command(rustplus, client, command);
+        else if ((reply = DeepSeaHandler.command(rustplus, client, command)) !== null) {
+            response = reply;
         }
-        else if (MarketHandler.getCommandFind(rustplus, client, command, true) !== null) {
-            response = MarketHandler.getCommandFind(rustplus, client, command, true);
+        else if ((reply = MarketHandler.getCommandFind(rustplus, client, command, true)) !== null) {
+            response = reply;
         }
         else if (commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxMarket')} `) ||
             commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxMarket')} `)) {

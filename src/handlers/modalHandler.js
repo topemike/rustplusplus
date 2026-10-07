@@ -373,7 +373,20 @@ module.exports = async (client, interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
         const bmInstance = client.battlemetricsInstances[tracker.battlemetricsId];
-        const found = await require('../util/trackerResolve.js').resolve(client, bmInstance, id);
+        let found;
+        try {
+            found = await require('../util/trackerResolve.js').resolve(client, bmInstance, id);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Tracker add player: ${e}`, 'error');
+            await interaction.editReply({
+                embeds: [DiscordEmbeds.getEmbed({
+                    color: Constants.COLOR_INACTIVE,
+                    description: client.intlGet(guildId, 'trackerPlayerLookupFailed')
+                })]
+            });
+            return;
+        }
 
         const duplicate = tracker.players.some(e =>
             (found.steamId !== null && e.steamId === found.steamId) ||
@@ -408,29 +421,45 @@ module.exports = async (client, interaction) => {
     else if (interaction.customId.startsWith('TrackerRemovePlayer')) {
         const ids = JSON.parse(interaction.customId.replace('TrackerRemovePlayer', ''));
         const tracker = instance.trackers[ids.trackerId];
-        const id = interaction.fields.getTextInputValue('TrackerRemovePlayerId');
+        const id = interaction.fields.getTextInputValue('TrackerRemovePlayerId').trim();
 
-        const isSteamId64 = id.length === Constants.STEAMID64_LENGTH ? true : false;
-
-        if (!tracker) {
+        if (!tracker || id === '') {
             interaction.deferUpdate();
             return;
         }
 
-        if (isSteamId64) {
-            tracker.players = tracker.players.filter(e => e.steamId !== id);
-        }
-        else {
-            tracker.players = tracker.players.filter(e => e.playerId !== id || e.steamId !== null);
-        }
+        /* A Steam link may need a lookup: answer later */
+        await interaction.deferReply({ ephemeral: true });
+
+        /* Same inputs as when adding: Steam ID, Steam/BattleMetrics link, BattleMetrics id or name */
+        const TrackerResolve = require('../util/trackerResolve.js');
+        const input = TrackerResolve.parseInput(id);
+        let steamId = input.kind === 'steam' ? input.value : null;
+        if (input.kind === 'vanity') steamId = await TrackerResolve.steamIdFromVanity(input.value);
+        const matches = (e) => {
+            if (steamId !== null) return e.steamId === steamId;
+            if (input.kind === 'battlemetrics') return `${e.playerId}` === input.value;
+            return `${e.name || ''}`.toLowerCase() === input.value.toLowerCase();
+        };
+        const removed = tracker.players.filter(matches);
+        tracker.players = tracker.players.filter(e => !matches(e));
         client.setInstance(interaction.guildId, instance);
 
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'modalValueChange', {
             id: `${verifyId}`,
-            value: `${id}`
+            value: `${id} -> removed ${removed.length}`
         }));
 
-        await DiscordMessages.sendTrackerMessage(interaction.guildId, ids.trackerId);
+        if (removed.length > 0) await DiscordMessages.sendTrackerMessage(interaction.guildId, ids.trackerId);
+        await interaction.editReply({
+            embeds: [DiscordEmbeds.getEmbed({
+                color: removed.length > 0 ? Constants.COLOR_ACTIVE : Constants.COLOR_INACTIVE,
+                description: removed.length > 0 ?
+                    client.intlGet(guildId, 'trackerPlayerRemoved', { name: removed.map(e => e.name).join(', ') }) :
+                    client.intlGet(guildId, 'trackerPlayerNotInTracker', { id: id })
+            })]
+        });
+        return;
     }
 
     client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'userModalInteractionSuccess', {

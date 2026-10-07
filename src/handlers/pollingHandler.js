@@ -34,6 +34,18 @@ const VendingMachines = require('../handlers/vendingMachineHandler.js');
 
 module.exports = {
     pollingHandler: async function (rustplus, client) {
+        /* A slow poll must not overlap the next one (duplicated messages) */
+        if (rustplus.pollingBusy) return;
+        rustplus.pollingBusy = true;
+        try {
+            await module.exports.poll(rustplus, client);
+        }
+        finally {
+            rustplus.pollingBusy = false;
+        }
+    },
+
+    poll: async function (rustplus, client) {
         /* Poll information such as info, mapMarkers, teamInfo and time */
         let info = await rustplus.getInfoAsync();
         if (!(await rustplus.isResponseValid(info))) return;
