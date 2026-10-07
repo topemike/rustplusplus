@@ -145,6 +145,7 @@ module.exports = {
         await PollingHandler.pollingHandler(rustplus, client);
         rustplus.pollingTaskId = setInterval(PollingHandler.pollingHandler, client.pollingIntervalMs, rustplus, client);
         rustplus.isOperational = true;
+        rustplus.operationalSince = Date.now();
 
         rustplus.updateLeaderRustPlusLiteInstance();
     },

@@ -25,6 +25,7 @@ const Constants = require('../util/constants.js');
 const Client = require('../../index.ts');
 const DiscordButtons = require('./discordButtons.js');
 const DiscordEmbeds = require('./discordEmbeds.js');
+const DeviceNotices = require('../util/deviceNotices.js');
 const DiscordSelectMenus = require('./discordSelectMenus.js');
 const DiscordTools = require('./discordTools.js');
 const Scrape = require('../util/scrape.js');
@@ -229,7 +230,9 @@ module.exports = {
         await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
-    sendStorageMonitorNotFoundMessage: async function (guildId, serverId, entityId) {
+    sendStorageMonitorNotFoundMessage: async function (guildId, serverId, entityId, force = false) {
+        /* Not while the server is down or has just come back: retried later if still missing */
+        if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'storageMonitor', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].storageMonitors[entityId];
 
@@ -244,7 +247,9 @@ module.exports = {
         await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
-    sendSmartSwitchNotFoundMessage: async function (guildId, serverId, entityId) {
+    sendSmartSwitchNotFoundMessage: async function (guildId, serverId, entityId, force = false) {
+        /* Not while the server is down or has just come back: retried later if still missing */
+        if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'switch', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].switches[entityId];
 
@@ -258,7 +263,9 @@ module.exports = {
         await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
-    sendSmartAlarmNotFoundMessage: async function (guildId, serverId, entityId) {
+    sendSmartAlarmNotFoundMessage: async function (guildId, serverId, entityId, force = false) {
+        /* Not while the server is down or has just come back: retried later if still missing */
+        if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'alarm', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];
 
