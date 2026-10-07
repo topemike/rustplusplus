@@ -34,6 +34,7 @@ const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const DiscordTools = require('../discordTools/discordTools.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const { resolveActionTargets, describeActionTargets } = require('../util/raidTargets.js');
 const Timer = require('../util/timer');
@@ -118,6 +119,7 @@ function getIncidentEmbed(client, guildId, incident, now = Date.now()) {
             duration: Timer.secondsToFullScale((incident.lastTriggerAt - incident.startedAt) / 1000) || '0s',
             count: incident.count
         });
+        if (incident.alarmsLost) description += `\n${client.intlGet(guildId, 'raidAlarmsLost')}`;
     }
     else {
         title = client.intlGet(guildId, 'raidActiveTitle', { server: incident.serverTitle });
@@ -149,6 +151,30 @@ function getIncidentEmbed(client, guildId, incident, now = Date.now()) {
     });
 }
 
+/* Raid messages go to #base (#activity if it does not exist) */
+function raidChannel(instance) {
+    return instance.channelId.base || instance.channelId.activity;
+}
+
+/* Raid pings go to the whole Discord channel */
+function getMention() {
+    return '@everyone';
+}
+
+/* Pin the raid message while the raid is active and nobody acknowledged it */
+async function setPinned(client, guildId, incident, pinned) {
+    if (!incident.messageId || !incident.channelId) return;
+    if (!!incident.pinned === pinned) return;
+    try {
+        const message = await DiscordTools.getMessageById(guildId, incident.channelId, incident.messageId);
+        if (message) {
+            if (pinned) await message.pin(); else await message.unpin();
+        }
+    }
+    catch (e) { /* missing permission: not critical */ }
+    incident.pinned = pinned;
+}
+
 function getAckButton(client, guildId, incident) {
     return new Discord.ActionRowBuilder().addComponents(
         new Discord.ButtonBuilder()
@@ -165,11 +191,12 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
         embeds: [getIncidentEmbed(client, guildId, incident)],
         components: [getAckButton(client, guildId, incident)]
     };
-    if (mention && incident.everyone) content.content = '@everyone';
+    if (mention && incident.everyone) content.content = getMention(client, guildId);
 
-    const message = await DiscordMessages.sendMessage(guildId, content, incident.messageId,
-        instance.channelId.activity);
+    if (!incident.channelId) incident.channelId = raidChannel(instance);
+    const message = await DiscordMessages.sendMessage(guildId, content, incident.messageId, incident.channelId);
     if (message && message.id) incident.messageId = message.id;
+    await setPinned(client, guildId, incident, !incident.endedAt && !incident.acknowledgedBy);
     incident.lastEditAt = Date.now();
     incident.dirty = false;
 }
@@ -177,7 +204,7 @@ async function sendOrEditIncident(client, guildId, incident, mention) {
 async function sendReminder(client, guildId, incident) {
     const instance = client.getInstance(guildId);
     const content = {
-        content: incident.everyone ? '@everyone' : undefined,
+        content: incident.everyone ? getMention(client, guildId) : undefined,
         embeds: [DiscordEmbeds.getEmbed({
             color: Constants.COLOR_INACTIVE,
             title: client.intlGet(guildId, 'raidReminderTitle'),
@@ -188,7 +215,7 @@ async function sendReminder(client, guildId, incident) {
         })]
     };
     if (!content.content) delete content.content;
-    await DiscordMessages.sendMessage(guildId, content, null, instance.channelId.activity);
+    await DiscordMessages.sendMessage(guildId, content, null, incident.channelId || raidChannel(instance));
 }
 
 /* ------------------------------------------------------------------------- */
@@ -269,20 +296,7 @@ async function tick(client, now = Date.now()) {
         if (incident.endedAt) continue;
         try {
             if (now - incident.lastTriggerAt >= s.quietMs) {
-                incident.endedAt = now;
-                await sendOrEditIncident(client, guildId, incident, false);
-                require('../util/dailyStats.js').recordRaid(guildId, {
-                    start: incident.startedAt,
-                    end: incident.lastTriggerAt,
-                    count: incident.count,
-                    alarms: Object.values(incident.alarms).map(a => a.name).join(', ')
-                });
-
-                const instance = client.getInstance(guildId);
-                const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
-                if (rustplus && instance.generalSettings.smartAlarmNotifyInGame) {
-                    rustplus.sendInGameMessage(client.intlGet(guildId, 'raidEndedInGame', { count: incident.count }));
-                }
+                await endIncident(client, guildId, incident, now);
                 continue;
             }
 
@@ -302,6 +316,32 @@ async function tick(client, now = Date.now()) {
     }
 }
 
+/* Raid over: quiet for a while, or every alarm of the raid stopped responding (destroyed) */
+async function endIncident(client, guildId, incident, now = Date.now(), alarmsLost = false) {
+    if (incident.endedAt) return;
+    incident.endedAt = now;
+    incident.alarmsLost = alarmsLost;
+    await sendOrEditIncident(client, guildId, incident, false);
+    require('../util/dailyStats.js').recordRaid(guildId, {
+        start: incident.startedAt,
+        end: incident.lastTriggerAt,
+        count: incident.count,
+        alarms: Object.values(incident.alarms).map(a => a.name).join(', ')
+    });
+    const instance = client.getInstance(guildId);
+    const rustplus = client.rustplusInstances ? client.rustplusInstances[guildId] : null;
+    if (rustplus && instance.generalSettings.smartAlarmNotifyInGame) {
+        rustplus.sendInGameMessage(client.intlGet(guildId, 'raidEndedInGame', { count: incident.count }));
+    }
+}
+
+/* A Smart Alarm stopped responding: if it was part of the active raid, the raid is over */
+async function onAlarmLost(client, guildId, entityId, now = Date.now()) {
+    const incident = incidents[guildId];
+    if (!incident || incident.endedAt || !incident.alarms[entityId]) return;
+    await endIncident(client, guildId, incident, now, true);
+}
+
 async function acknowledge(client, interaction) {
     const guildId = interaction.guildId;
     const incident = incidents[guildId];
@@ -314,6 +354,7 @@ async function acknowledge(client, interaction) {
         embeds: [getIncidentEmbed(client, guildId, incident)],
         components: [getAckButton(client, guildId, incident)]
     });
+    await setPinned(client, guildId, incident, false);
     incident.lastEditAt = Date.now();
     incident.dirty = false;
 }
@@ -322,6 +363,8 @@ module.exports = {
     onAlarmTriggered: onAlarmTriggered,
     tick: tick,
     acknowledge: acknowledge,
+    onAlarmLost: onAlarmLost,
+    getMention: getMention,
     resolveActionTargets: resolveActionTargets,
     describeActionTargets: describeActionTargets,
     getIncident: (guildId) => incidents[guildId],

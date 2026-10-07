@@ -44,6 +44,8 @@ module.exports = {
                 if (!(await rustplus.isResponseValid(info))) {
                     if (instance.serverList[serverId].alarms[entityId].reachable) {
                         await DiscordMessages.sendSmartAlarmNotFoundMessage(guildId, serverId, entityId);
+                        /* The alarm is gone (destroyed?): end the raid it was part of */
+                        await require('./raidHandler.js').onAlarmLost(client, guildId, entityId);
 
                         instance.serverList[serverId].alarms[entityId].reachable = false;
                         client.setInstance(guildId, instance);
