@@ -46,9 +46,35 @@ function answeredFound(response) {
     return !!response && typeof response === 'object' && !response.error && !!response.entityInfo;
 }
 
+/* Errors from Rust+ that mean "this device is not there for us" (gone, or no longer authorised) */
+const MISSING_ERRORS = ['not_found', 'access_denied'];
+/* Errors that say nothing about the device (busy server, our own request limit) */
+const TRANSIENT_ERRORS = ['rate_limit', 'server_error'];
+const loggedErrors = new Set();
+
+/**
+ *  What the server said about a device: 'found', 'missing' or 'unknown' (timeout, no answer, busy
+ *  server). An error text not in the lists above is logged once, so a change in Rust+ is noticed
+ *  instead of silently never sending a notice.
+ */
+function classify(response, client = null) {
+    if (answeredFound(response)) return 'found';
+    const error = response && typeof response === 'object' && typeof response.error === 'string' ? response.error : null;
+    if (error === null) return 'unknown';
+    if (MISSING_ERRORS.includes(error)) return 'missing';
+    if (!TRANSIENT_ERRORS.includes(error) && !loggedErrors.has(error)) {
+        loggedErrors.add(error);
+        if (client && typeof client.log === 'function') {
+            client.log(client.intlGet(null, 'warningCap'), `Device check: unexpected Rust+ answer "${error}"`, 'warn');
+        }
+    }
+    return 'unknown';
+}
+
 module.exports = {
     answeredNotFound: answeredNotFound,
     answeredFound: answeredFound,
+    classify: classify,
     CHECK_EVERY_MS: CHECK_EVERY_MS,
     CONFIRMATIONS: CONFIRMATIONS,
 
@@ -93,8 +119,9 @@ module.exports = {
             try { response = await rustplus.getEntityInfoAsync(p.entityId); }
             catch (e) { response = undefined; }
 
-            if (answeredFound(response)) { delete pending[key]; continue; }
-            if (!answeredNotFound(response)) continue;    /* timeout / no answer: proves nothing */
+            const state = classify(response, client);
+            if (state === 'found') { delete pending[key]; continue; }
+            if (state !== 'missing') continue;    /* timeout / no answer: proves nothing */
 
             p.misses++;
             if (p.misses < CONFIRMATIONS) continue;
