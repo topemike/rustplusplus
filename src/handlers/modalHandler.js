@@ -399,7 +399,11 @@ module.exports = async (client, interaction) => {
             text = client.intlGet(guildId, 'trackerPlayerAlready', { name: found.name });
         }
         else {
-            tracker.players.push({ name: found.name, steamId: found.steamId, playerId: found.playerId });
+            /* With a clan tag, the name is shown (and compared later) as "TAG name" */
+            const tagged = tracker.clanTag && ['steam', 'vanity'].includes(found.input) && found.name !== '-' &&
+                !`${found.name}`.startsWith(`${tracker.clanTag} `) ?
+                `${tracker.clanTag} ${found.name}` : found.name;
+            tracker.players.push({ name: tagged, steamId: found.steamId, playerId: found.playerId });
             client.setInstance(interaction.guildId, instance);
             await DiscordMessages.sendTrackerMessage(interaction.guildId, ids.trackerId);
             text = found.playerId !== null ?

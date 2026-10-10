@@ -157,6 +157,7 @@ class RustPlus extends RustPlusLib {
             this.leaderRustPlusInstance = null;
         }
 
+        if (!this.team) return;     /* no team information yet (first poll failed) */
         const instance = Client.client.getInstance(this.guildId);
         const leader = this.team.leaderSteamId;
         if (leader === this.playerId) return;
@@ -1555,8 +1556,11 @@ class RustPlus extends RustPlusLib {
                 if (this.team.leaderSteamId === this.playerId) {
                     await this.team.changeLeadership(callerSteamId);
                 }
-                else {
+                else if (this.leaderRustPlusInstance) {
                     this.leaderRustPlusInstance.promoteToLeaderAsync(callerSteamId);
+                }
+                else {
+                    return Client.client.intlGet(this.guildId, 'leaderNotConnected');
                 }
 
                 const player = this.team.getPlayer(callerSteamId);
@@ -1597,8 +1601,11 @@ class RustPlus extends RustPlusLib {
                         if (this.team.leaderSteamId === this.playerId) {
                             await this.team.changeLeadership(player.steamId);
                         }
-                        else {
+                        else if (this.leaderRustPlusInstance) {
                             this.leaderRustPlusInstance.promoteToLeaderAsync(player.steamId);
+                        }
+                        else {
+                            return Client.client.intlGet(this.guildId, 'leaderNotConnected');
                         }
 
                         return Client.client.intlGet(this.guildId, 'leaderTransferred', {

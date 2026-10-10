@@ -66,6 +66,10 @@ module.exports = {
                 await DiscordMessages.sendServerMessage(guildId, serverId, 2);
             }
 
+            /* Meanwhile someone may have pressed DISCONNECT / CONNECT or deleted the server */
+            if (rustplus.isDeleted || !client.activeRustplusInstances[guildId]) return;
+            if (client.rustplusInstances[guildId] && client.rustplusInstances[guildId] !== rustplus) return;
+
             client.rustplusReconnecting[guildId] = true;
 
             rustplus.log(client.intlGet(null, 'reconnectingCap'), client.intlGet(null, 'reconnectingToServer'));

@@ -494,7 +494,7 @@ module.exports = async (client, interaction) => {
         const newRustplus = client.createRustplusInstance(
             guildId, server.serverIp, server.appPort, server.steamId, server.playerToken);
         await DiscordMessages.sendServerMessage(guildId, ids.serverId, null);
-        newRustplus.isNewConnection = true;
+        if (newRustplus) newRustplus.isNewConnection = true;
 
         try {
             await interaction.editReply({
@@ -558,7 +558,7 @@ module.exports = async (client, interaction) => {
 
         await DiscordMessages.sendServerMessage(guildId, ids.serverId, null, interaction);
 
-        newRustplus.isNewConnection = true;
+        if (newRustplus) newRustplus.isNewConnection = true;
     }
     else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('ServerEdit')) {
         const ids = JSON.parse(interaction.customId.replace('ServerEdit', ''));
@@ -730,19 +730,22 @@ module.exports = async (client, interaction) => {
             return;
         }
 
-        if (rustplus && (rustplus.serverId === ids.serverId || rustplus.serverId === instance.activeServer)) {
-            await DiscordTools.clearTextChannel(rustplus.guildId, instance.channelId.switches, 100);
-            await DiscordTools.clearTextChannel(rustplus.guildId, instance.channelId.switchGroups, 100);
-            await DiscordTools.clearTextChannel(rustplus.guildId, instance.channelId.storageMonitors, 100);
-
+        /* Deleting the server the bot is on (connected or waiting to reconnect): stop it first.
+           Deleting another stored server does not touch the current connection. */
+        if (ids.serverId === instance.activeServer || (rustplus && rustplus.serverId === ids.serverId)) {
             instance.activeServer = null;
             client.setInstance(guildId, instance);
-
             client.resetRustplusVariables(guildId);
 
-            rustplus.isDeleted = true;
-            rustplus.disconnect();
-            delete client.rustplusInstances[guildId];
+            if (rustplus) {
+                rustplus.isDeleted = true;
+                rustplus.disconnect();
+                delete client.rustplusInstances[guildId];
+            }
+
+            await DiscordTools.clearTextChannel(guildId, instance.channelId.switches, 100);
+            await DiscordTools.clearTextChannel(guildId, instance.channelId.switchGroups, 100);
+            await DiscordTools.clearTextChannel(guildId, instance.channelId.storageMonitors, 100);
         }
 
         for (const [entityId, content] of Object.entries(server.alarms)) {

@@ -115,11 +115,6 @@ async function rustPlusLiteConnectedEvent(rustplusLite) {
     }
     rustplusLite.log(Client.client.intlGet(null, 'connectedCap'),
         Client.client.intlGet(null, 'rustplusOperational'));
-
-    if (Client.client.rustplusReconnectTimers[rustplusLite.guildId]) {
-        clearTimeout(Client.client.rustplusReconnectTimers[rustplusLite.guildId]);
-        Client.client.rustplusReconnectTimers[rustplusLite.guildId] = null;
-    }
 }
 
 async function rustPlusLiteConnectingEvent(rustplusLite) {

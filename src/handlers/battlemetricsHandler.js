@@ -54,9 +54,10 @@ module.exports = {
                 changed = true;
             }
             const name = tag && player.name.startsWith(tag) ? player.name.slice(tag.length) : player.name;
+            const names = [player.name, name];
 
-            /* Online now with that name */
-            const online = Object.keys(bmInstance.players || {}).find(e => bmInstance.players[e].name === name);
+            /* Online now with that name (with the clan tag, as the tracker shows it, or without) */
+            const online = Object.keys(bmInstance.players || {}).find(e => names.includes(bmInstance.players[e].name));
             if (online) {
                 player.playerId = online;
                 delete player.nextSearch;
@@ -68,8 +69,8 @@ module.exports = {
             if (player.nextSearch && now < player.nextSearch) continue;
             player.nextSearch = now + SEARCH_INTERVAL_MS;
             const found = await require('../util/trackerResolve.js').searchBattlemetrics(bmInstance, name);
-            const match = found.find(e => e.name === name) ||
-                found.find(e => e.name.toLowerCase() === name.toLowerCase());
+            const match = found.find(e => names.includes(e.name)) ||
+                found.find(e => names.some(n => e.name.toLowerCase() === n.toLowerCase()));
             if (match) {
                 player.playerId = match.id;
                 delete player.nextSearch;
@@ -400,7 +401,7 @@ module.exports = {
 
                 let description = '';
                 if (isEmbedFull) {
-                    description = client.intlGet(interaction.guildId, 'andMorePlayers', {
+                    description = client.intlGet(guildId, 'andMorePlayers', {
                         number: bmInstance.nameChangedPlayers.length - playerCounter
                     });
                 }
@@ -464,7 +465,7 @@ module.exports = {
 
                 let description = '';
                 if (isEmbedFull) {
-                    description = client.intlGet(interaction.guildId, 'andMorePlayers', {
+                    description = client.intlGet(guildId, 'andMorePlayers', {
                         number: playerIds.length - playerCounter
                     });
                 }
@@ -518,8 +519,8 @@ module.exports = {
 
                 let description = '';
                 if (isEmbedFull) {
-                    description = client.intlGet(interaction.guildId, 'andMorePlayers', {
-                        number: playerIds.length - playerCounter
+                    description = client.intlGet(guildId, 'andMorePlayers', {
+                        number: bmInstance.logoutPlayers.length - playerCounter
                     });
                 }
 

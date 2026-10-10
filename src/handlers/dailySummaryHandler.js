@@ -54,8 +54,14 @@ async function check(client, now = Date.now()) {
                 continue;
             }
 
-            await DiscordMessages.sendMessage(guildId, { embeds: [getSummaryEmbed(client, guildId, now)] },
-                null, instance.channelId.activity);
+            const message = await DiscordMessages.sendMessage(guildId,
+                { embeds: [getSummaryEmbed(client, guildId, now)] }, null, instance.channelId.activity);
+            /* Discord did not take it (down, channel missing): try again on the next checks, not lose the day */
+            if (!message) {
+                failures[guildId] = (failures[guildId] || 0) + 1;
+                if (failures[guildId] < 30) continue;
+            }
+            delete failures[guildId];
             DailyStats.markSent(guildId, now);
         }
         catch (e) {
@@ -63,6 +69,8 @@ async function check(client, now = Date.now()) {
         }
     }
 }
+
+const failures = {};
 
 module.exports = {
     getSummaryEmbed: getSummaryEmbed,

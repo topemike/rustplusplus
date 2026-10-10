@@ -1028,5 +1028,6 @@
     "proximityHereSaved": "{device}: location saved at {location}. Proximity is measured from here ({proximity} m).",
     "proximityNoLocation": "No location saved: stand next to it and write {command} here",
     "proximityStatus": "Location {location}. {details}",
-    "smartSwitchCommandUsage": "Use: {command} on | off | status | here, optionally with a time: {command} on 2m"
+    "smartSwitchCommandUsage": "Use: {command} on | off | status | here, optionally with a time: {command} on 2m",
+    "leaderNotConnected": "The bot can't pass the leadership now: the current leader is not connected through the bot. Try again in a minute."
 }

@@ -285,10 +285,19 @@ function cleanup(guildId, trackerIds) {
 /* Schedule analysis                                                          */
 /* ------------------------------------------------------------------------- */
 
+/* Creating a formatter is slow (thousands per schedule): one per time zone, reused */
+const formatters = new Map();
+function formatterFor(timeZone) {
+    if (!formatters.has(timeZone)) {
+        formatters.set(timeZone, new Intl.DateTimeFormat('en-GB', {
+            timeZone: timeZone, hour: '2-digit', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit'
+        }));
+    }
+    return formatters.get(timeZone);
+}
+
 function localParts(time, timeZone) {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-        timeZone: timeZone, hour: '2-digit', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit'
-    }).formatToParts(new Date(time));
+    const parts = formatterFor(timeZone).formatToParts(new Date(time));
     const get = (type) => parts.find(p => p.type === type).value;
     return { hour: parseInt(get('hour')), day: `${get('year')}-${get('month')}-${get('day')}` };
 }
