@@ -400,7 +400,8 @@ module.exports = async (client, interaction) => {
         }
         else {
             /* With a clan tag, the name is shown (and compared later) as "TAG name" */
-            const tagged = tracker.clanTag && found.name !== '-' && !`${found.name}`.startsWith(`${tracker.clanTag} `) ?
+            const tagged = tracker.clanTag && ['steam', 'vanity'].includes(found.input) && found.name !== '-' &&
+                !`${found.name}`.startsWith(`${tracker.clanTag} `) ?
                 `${tracker.clanTag} ${found.name}` : found.name;
             tracker.players.push({ name: tagged, steamId: found.steamId, playerId: found.playerId });
             client.setInstance(interaction.guildId, instance);

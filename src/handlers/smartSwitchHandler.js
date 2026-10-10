@@ -633,7 +633,7 @@ module.exports = {
             if (instance.serverList[serverId].switches[entityId].raidLock) return;
 
             if (SwitchOverride.OVERRIDABLE_MODES.includes(instance.serverList[serverId].switches[entityId].autoDayNightOnOff)) {
-                SwitchOverride.clear(instance.serverList[serverId].switches[entityId]);
+                SwitchOverride.clear(instance.serverList[serverId].switches[entityId], false);
                 client.setInstance(guildId, instance);
                 DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
                 rustplus.sendInGameMessage(client.intlGet(guildId, 'switchBackToAuto', {
@@ -642,7 +642,7 @@ module.exports = {
                 return;
             }
 
-            await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, !active);
+            await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, !active, false);
 
             const str = client.intlGet(guildId, 'automaticallyTurningBackOnOff', {
                 device: instance.serverList[serverId].switches[entityId].name,
@@ -656,7 +656,7 @@ module.exports = {
         return true;
     },
 
-    smartSwitchCommandTurnOnOff: async function (rustplus, client, entityId, active) {
+    smartSwitchCommandTurnOnOff: async function (rustplus, client, entityId, active, byPerson = true) {
         const guildId = rustplus.guildId;
         const serverId = rustplus.serverId;
         const instance = client.getInstance(guildId);
@@ -665,7 +665,7 @@ module.exports = {
         const prevActive = switches[entityId].active;
         switches[entityId].active = active;
         delete switches[entityId].raidLock;     /* an order: the raid lock ends */
-        SwitchOverride.setManual(switches[entityId], active);
+        SwitchOverride.setManual(switches[entityId], active, byPerson);
         client.setInstance(guildId, instance);
 
         rustplus.interactionSwitches.push(entityId);
