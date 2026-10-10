@@ -28,6 +28,7 @@ module.exports = {
     name: 'connected',
     async execute(rustplus, client) {
         if (!rustplus.isServerAvailable()) return rustplus.deleteThisRustplusInstance();
+        if (rustplus.stopIfReplaced()) return;
 
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'connectedToServer'));
 
@@ -42,6 +43,7 @@ module.exports = {
 
         /* Request the map. Act as a check to see if connection is truly operational. */
         const map = await rustplus.getMapAsync(3 * 60 * 1000); /* 3 min timeout */
+        if (rustplus.stopIfReplaced()) return;
         if (!(await rustplus.isResponseValid(map))) {
             rustplus.log(client.intlGet(null, 'errorCap'),
                 client.intlGet(null, 'somethingWrongWithConnection'), 'error');
@@ -142,6 +144,7 @@ module.exports = {
         }
 
         await PollingHandler.pollingHandler(rustplus, client);
+        if (rustplus.stopIfReplaced()) return;
         rustplus.pollingTaskId = setInterval(PollingHandler.pollingHandler, client.pollingIntervalMs, rustplus, client);
         rustplus.isOperational = true;
         rustplus.operationalSince = Date.now();

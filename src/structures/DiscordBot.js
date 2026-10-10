@@ -300,6 +300,14 @@ class DiscordBot extends Discord.Client {
     }
 
     createRustplusInstance(guildId, serverIp, appPort, steamId, playerToken) {
+        /* Only one connection per Discord server: close the previous one if it is still there */
+        const previous = this.rustplusInstances[guildId];
+        if (previous) {
+            previous.isDeleted = true;
+            clearInterval(previous.pollingTaskId);
+            try { previous.disconnect(); } catch (e) { /* already closed */ }
+        }
+
         let rustplus = new RustPlus(guildId, serverIp, appPort, steamId, playerToken);
 
         /* Add rustplus instance to Object */

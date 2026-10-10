@@ -246,6 +246,26 @@ class RustPlus extends RustPlusLib {
         this.messagesSentByBot.unshift(message);
     }
 
+    /* Is this the connection the bot is using now? An older one that is still alive answers
+       everything a second time (commands, deaths...), so it must stop. */
+    isCurrent() {
+        return !this.isDeleted && Client.client.rustplusInstances[this.guildId] === this;
+    }
+
+    /* Returns true (and closes this connection) if another connection replaced this one */
+    stopIfReplaced() {
+        if (this.isCurrent()) return false;
+        if (!this.replacedLogged) {
+            this.replacedLogged = true;
+            this.log(Client.client.intlGet(null, 'warningCap'),
+                'Old connection still alive (another one replaced it): closing it to avoid duplicated messages.', 'warning');
+        }
+        this.isDeleted = true;
+        clearInterval(this.pollingTaskId);
+        this.disconnect();
+        return true;
+    }
+
     deleteThisRustplusInstance() {
         this.isDeleted = true;
         this.disconnect();

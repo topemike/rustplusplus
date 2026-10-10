@@ -36,6 +36,7 @@ module.exports = {
     pollingHandler: async function (rustplus, client) {
         /* A slow poll must not overlap the next one (duplicated messages) */
         if (rustplus.pollingBusy) return;
+        if (rustplus.stopIfReplaced && rustplus.stopIfReplaced()) return;
         rustplus.pollingBusy = true;
         try {
             await module.exports.poll(rustplus, client);
