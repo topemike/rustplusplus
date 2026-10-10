@@ -48,6 +48,13 @@ module.exports = {
             rustplus.log(client.intlGet(null, 'errorCap'),
                 client.intlGet(null, 'somethingWrongWithConnection'), 'error');
 
+            /* It worked before (reconnecting after a drop, e.g. the server is still starting):
+               try again later instead of giving up */
+            if (client.rustplusReconnecting[guildId] && client.activeRustplusInstances[guildId]) {
+                rustplus.disconnect();
+                return;
+            }
+
             instance.activeServer = null;
             client.setInstance(guildId, instance);
 
@@ -57,7 +64,7 @@ module.exports = {
             client.resetRustplusVariables(guildId);
 
             rustplus.disconnect();
-            delete client.rustplusInstances[guildId];
+            if (client.rustplusInstances[guildId] === rustplus) delete client.rustplusInstances[guildId];
             return;
         }
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'rustplusOperational'));

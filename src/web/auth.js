@@ -128,7 +128,7 @@ function loginRedirect(res) {
     });
     res.writeHead(302, {
         Location: `https://discord.com/oauth2/authorize?${params.toString()}`,
-        'Set-Cookie': cookie(STATE_COOKIE, encode({ state: state, exp: Date.now() + 10 * 60 * 1000 }), 600)
+        'Set-Cookie': cookie(STATE_COOKIE, encode({ typ: 'state', state: state, exp: Date.now() + 10 * 60 * 1000 }), 600)
     });
     res.end();
 }
@@ -140,7 +140,7 @@ function loginRedirect(res) {
 async function handleCallback(req, url) {
     const cookies = parseCookies(req);
     const state = decode(cookies[STATE_COOKIE]);
-    if (!state || state.state !== url.searchParams.get('state')) return null;
+    if (!state || state.typ !== 'state' || state.state !== url.searchParams.get('state')) return null;
     const code = url.searchParams.get('code');
     if (!code) return null;
 
@@ -165,7 +165,7 @@ async function handleCallback(req, url) {
 }
 
 function sessionCookie(user) {
-    return cookie(SESSION_COOKIE, encode({ ...user, exp: Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000 }),
+    return cookie(SESSION_COOKIE, encode({ ...user, typ: 'session', exp: Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000 }),
         SESSION_DAYS * 24 * 60 * 60);
 }
 
@@ -173,8 +173,15 @@ function clearCookies() {
     return [cookie(SESSION_COOKIE, '', 0), cookie(STATE_COOKIE, '', 0)];
 }
 
+const DISCORD_ID = /^\d{17,20}$/;
+
+/* Only a real login: a session cookie with a Discord user id (the login "state" cookie, signed the
+   same way, must never work as a session) */
 function getSession(req) {
-    return decode(parseCookies(req)[SESSION_COOKIE]);
+    const session = decode(parseCookies(req)[SESSION_COOKIE]);
+    if (!session || session.typ === 'state' || session.state !== undefined) return null;
+    if (typeof session.id !== 'string' || !DISCORD_ID.test(session.id)) return null;
+    return session;
 }
 
 /**
@@ -184,6 +191,8 @@ function getSession(req) {
  *  @return {Array} [guildId]
  */
 async function allowedGuilds(client, userId) {
+    /* Without a valid id, guild.members.fetch() would fetch every member instead of one */
+    if (typeof userId !== 'string' || !DISCORD_ID.test(userId)) return [];
     const cached = accessCache.get(userId);
     if (cached && Date.now() - cached.at < ACCESS_CACHE_MS) return cached.guilds;
 
@@ -191,7 +200,8 @@ async function allowedGuilds(client, userId) {
     for (const guild of client.guilds.cache.values()) {
         let member = null;
         try {
-            member = await guild.members.fetch(userId);
+            member = await guild.members.fetch({ user: userId, force: false });
+            if (!member || member.id !== userId) continue;
         }
         catch (e) {
             continue;   /* not a member */

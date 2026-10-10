@@ -63,8 +63,13 @@ module.exports = {
                     }
                 }
                 else {
-                    if (!instance.serverList[serverId].switches[entityId].reachable) {
-                        instance.serverList[serverId].switches[entityId].reachable = true;
+                    const sw = instance.serverList[serverId].switches[entityId];
+                    /* What the switch really is (a failed or missed change must not stay wrong) */
+                    const real = info.entityInfo && info.entityInfo.payload ? info.entityInfo.payload.value : undefined;
+                    const realChanged = typeof real === 'boolean' && sw.active !== real;
+                    if (!sw.reachable || realChanged) {
+                        sw.reachable = true;
+                        if (realChanged) sw.active = real;
                         client.setInstance(guildId, instance);
 
                         await DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
@@ -87,6 +92,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchOnAsync(entityId);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = false;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -110,6 +117,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchOffAsync(entityId);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = true;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -139,6 +148,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchOffAsync(entityId);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = true;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -162,6 +173,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchOnAsync(entityId);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = false;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -183,6 +196,8 @@ module.exports = {
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
             /* Held on by an alarm action: automatic modes must not change it */
             if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
+            /* Not answering: the check every 5 minutes marks it reachable again, then it is set */
+            if (content.reachable === false) continue;
             if (content.autoDayNightOnOff === 3) { /* ALWAYS ON: what the Discord menu says */
                 /* An order by hand (command / Discord button) prevails until its time is up or VOLVER A AUTOMÁTICO */
                 const wasPaused = SwitchOverride.isPaused(content);
@@ -204,6 +219,8 @@ module.exports = {
 
                 const response = await rustplus.turnSmartSwitchOnAsync(entityId);
                 if (!(await rustplus.isResponseValid(response))) {
+                    /* Not turned: keep what the switch really is, so it is tried again */
+                    instance.serverList[serverId].switches[entityId].active = false;
                     if (instance.serverList[serverId].switches[entityId].reachable) {
                         await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                     }
@@ -240,6 +257,8 @@ module.exports = {
 
                 const response = await rustplus.turnSmartSwitchOffAsync(entityId);
                 if (!(await rustplus.isResponseValid(response))) {
+                    /* Not turned: keep what the switch really is, so it is tried again */
+                    instance.serverList[serverId].switches[entityId].active = true;
                     if (instance.serverList[serverId].switches[entityId].reachable) {
                         await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                     }
@@ -280,6 +299,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchAsync(entityId, shouldBeOn);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = !shouldBeOn;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -321,6 +342,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchAsync(entityId, shouldBeOn);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = !shouldBeOn;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -361,6 +384,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchAsync(entityId, shouldBeOn);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = !shouldBeOn;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -401,6 +426,8 @@ module.exports = {
 
                     const response = await rustplus.turnSmartSwitchAsync(entityId, shouldBeOn);
                     if (!(await rustplus.isResponseValid(response))) {
+                        /* Not turned: keep what the switch really is, so it is tried again */
+                        instance.serverList[serverId].switches[entityId].active = !shouldBeOn;
                         if (instance.serverList[serverId].switches[entityId].reachable) {
                             await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         }
@@ -444,16 +471,21 @@ module.exports = {
         const statusEn = client.intlGet('en', 'commandSyntaxStatus');
         const statusLang = client.intlGet(guildId, 'commandSyntaxStatus');
 
-        const entityId = Object.keys(switches).find(e =>
-            command === `${prefix}${switches[e].command}` ||
-            command.startsWith(`${prefix}${switches[e].command} `));
+        /* Upper or lower case does not matter: "!SAM off" = "!sam off" */
+        const lower = command.toLowerCase();
+        const entityId = Object.keys(switches).find(e => {
+            const c = `${prefix}${switches[e].command}`.toLowerCase();
+            return lower === c || lower.startsWith(`${c} `);
+        });
 
         if (!entityId) return false;
+        command = `${prefix}${switches[entityId].command}${command.slice(`${prefix}${switches[entityId].command}`.length)}`;
 
         const entityCommand = `${prefix}${switches[entityId].command}`;
         /* Also understood: "encender/encendido/apagar/apagado" (and any case), e.g. "!sam encendido 2m" */
         const words = command.slice(entityCommand.length).trim().split(/\s+/);
         const word = (words[0] || '').toLowerCase();
+        if (words[0]) words[0] = word;
         if ([onEn, onLang, 'on', 'encender', 'encendido'].includes(word)) words[0] = onEn;
         else if ([offEn, offLang, 'off', 'apagar', 'apagado'].includes(word)) words[0] = offEn;
         command = `${entityCommand} ${words.join(' ')}`.trim();
@@ -597,6 +629,8 @@ module.exports = {
             const instance = client.getInstance(guildId);
             if (!instance.serverList[serverId].switches.hasOwnProperty(entityId)) return;
             delete rustplus.currentSwitchTimeouts[entityId];
+            /* A raid took it over meanwhile: the raid decides now */
+            if (instance.serverList[serverId].switches[entityId].raidLock) return;
 
             if (SwitchOverride.OVERRIDABLE_MODES.includes(instance.serverList[serverId].switches[entityId].autoDayNightOnOff)) {
                 SwitchOverride.clear(instance.serverList[serverId].switches[entityId]);

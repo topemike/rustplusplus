@@ -65,6 +65,7 @@ async function messageBroadcast(rustplus, client, message) {
 }
 
 async function messageBroadcastTeamChanged(rustplus, client, message) {
+    if (!rustplus.team) return;     /* no team information yet: the next poll creates it */
     TeamHandler.handler(rustplus, client, message.broadcast.teamChanged.teamInfo);
     const changed = rustplus.team.isLeaderSteamIdChanged(message.broadcast.teamChanged.teamInfo);
     rustplus.team.updateTeam(message.broadcast.teamChanged.teamInfo);
@@ -170,7 +171,7 @@ async function messageBroadcastEntityChangedSmartSwitch(rustplus, client, messag
     if ([3, 4].includes(sw.autoDayNightOnOff)) {
         delete sw.raidLock;
         delete sw.holdUntil;
-        if (active === (sw.autoDayNightOnOff === 3)) delete sw.manualOverride;
+        if (active === (sw.autoDayNightOnOff === 3)) { delete sw.manualOverride; sw.orderAt = Date.now(); }
         else require('../util/switchOverride.js').setManual(sw, active);
     }
     client.setInstance(rustplus.guildId, instance);

@@ -46,11 +46,18 @@ module.exports = {
         if (!switchContent) return;
         delete switchContent.manualOverride;
         delete switchContent.raidLock;
+        delete switchContent.holdUntil;
+        switchContent.orderAt = Date.now();     /* an order: the raid in progress does not take it back */
     },
 
     /* Call when a switch is turned on/off by hand (Discord, in-game command, in game). */
     setManual: function (switchContent, active) {
-        if (!switchContent || !OVERRIDABLE_MODES.includes(switchContent.autoDayNightOnOff)) return false;
+        if (!switchContent) return false;
+        /* An order ends what a raid alarm did to it, and the raid in progress does not take it back */
+        delete switchContent.raidLock;
+        delete switchContent.holdUntil;
+        switchContent.orderAt = Date.now();
+        if (!OVERRIDABLE_MODES.includes(switchContent.autoDayNightOnOff)) return false;
         switchContent.manualOverride = { active: active, condition: null };
         return true;
     },

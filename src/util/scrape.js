@@ -69,7 +69,8 @@ module.exports = {
             let data = /class="actual_persona_name">(.+?)<\/span>/m.exec(response.data);
             if (data) return Utils.decodeHtml(data[1]);
             data = /<title>Steam Community :: (.+?)<\/title>/m.exec(response.data);
-            if (data) return Utils.decodeHtml(data[1]);
+            /* A profile that does not exist shows "Steam Community :: Error" */
+            if (data && data[1] !== 'Error') return Utils.decodeHtml(data[1]);
         }
 
         client.log(client.intlGet(null, 'errorCap'), client.intlGet(null, 'failedToScrapeProfileName', {
