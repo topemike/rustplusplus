@@ -27,6 +27,16 @@ const TrackerIntel = require('../util/trackerIntel.js');
 const SEARCH_INTERVAL_MS = 10 * 60 * 1000;
 
 module.exports = {
+    /* BattleMetrics sometimes gets the server name cut at 63 characters (the game's server query
+       limit), e.g. "... | No B" / "... | No BP Wipe |": that is not a real name change */
+    isTruncatedName: function (a, b) {
+        const x = `${a || ''}`, y = `${b || ''}`;
+        const [shorter, longer] = x.length <= y.length ? [x, y] : [y, x];
+        if (shorter === '' || shorter === longer || !longer.startsWith(shorter)) return false;
+        const bytes = Buffer.byteLength(shorter, 'utf8');
+        return bytes >= 60 && bytes <= 64;
+    },
+
     /* Returns true if some player of the tracker got its BattleMetrics id (or its name) now */
     findMissingPlayerIds: async function (client, tracker, bmInstance, now = Date.now()) {
         let changed = false;
@@ -313,7 +323,9 @@ module.exports = {
             const bmInstance = client.battlemetricsInstances[battlemetricsId];
 
             /* Server name changed? */
-            if (settings.battlemetricsServerNameChanges && bmInstance.serverEvaluation.hasOwnProperty('server_name')) {
+            if (settings.battlemetricsServerNameChanges && bmInstance.serverEvaluation.hasOwnProperty('server_name') &&
+                !module.exports.isTruncatedName(bmInstance.serverEvaluation['server_name'].from,
+                    bmInstance.serverEvaluation['server_name'].to)) {
                 const oldName = bmInstance.serverEvaluation['server_name'].from;
                 const newName = bmInstance.serverEvaluation['server_name'].to;
 
