@@ -52,21 +52,38 @@ module.exports = {
     },
 
     scrapeSteamProfileName: async function (client, steamId) {
-        const response = await module.exports.scrape(`${Constants.STEAM_PROFILES_URL}${steamId}`);
+        const link = `${Constants.STEAM_PROFILES_URL}${steamId}`;
+        const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept-Language': 'en-US,en;q=0.9' };
 
-        if (response.status !== 200) {
-            client.log(client.intlGet(null, 'errorCap'), client.intlGet(null, 'failedToScrapeProfileName', {
-                link: `${Constants.STEAM_PROFILES_URL}${steamId}`
-            }), 'error');
-            return null;
+        /* 1) The XML version of the profile: small and stable, has the name even for private profiles */
+        const xml = await module.exports.scrapeWith(`${link}/?xml=1`, headers);
+        if (xml.status === 200 && typeof xml.data === 'string') {
+            const m = xml.data.match(/<steamID>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/steamID>/) ||
+                xml.data.match(/<steamID>([^<]+)<\/steamID>/);
+            if (m && m[1].trim() !== '') return Utils.decodeHtml(m[1].trim());
         }
 
-        let regex = new RegExp(`class="actual_persona_name">(.+?)</span>`, 'gm');
-        let data = regex.exec(response.data);
-        if (data) {
-            return Utils.decodeHtml(data[1]);
+        /* 2) The normal profile page */
+        const response = await module.exports.scrapeWith(link, headers);
+        if (response.status === 200 && typeof response.data === 'string') {
+            let data = /class="actual_persona_name">(.+?)<\/span>/m.exec(response.data);
+            if (data) return Utils.decodeHtml(data[1]);
+            data = /<title>Steam Community :: (.+?)<\/title>/m.exec(response.data);
+            if (data) return Utils.decodeHtml(data[1]);
         }
 
+        client.log(client.intlGet(null, 'errorCap'), client.intlGet(null, 'failedToScrapeProfileName', {
+            link: link
+        }) + ` (HTTP ${response.status || xml.status || 'sin respuesta'})`, 'error');
         return null;
+    },
+
+    scrapeWith: async function (url, headers) {
+        try {
+            return await Axios.get(url, { headers: headers, timeout: 15000 });
+        }
+        catch (e) {
+            return e && e.response ? e.response : {};
+        }
     },
 }

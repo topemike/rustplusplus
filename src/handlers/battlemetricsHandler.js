@@ -24,7 +24,51 @@ const DiscordTools = require('../discordTools/discordTools.js');
 const Scrape = require('../util/scrape.js');
 const TrackerIntel = require('../util/trackerIntel.js');
 
+const SEARCH_INTERVAL_MS = 10 * 60 * 1000;
+
 module.exports = {
+    /* Returns true if some player of the tracker got its BattleMetrics id (or its name) now */
+    findMissingPlayerIds: async function (client, tracker, bmInstance, now = Date.now()) {
+        let changed = false;
+        const tag = tracker.clanTag ? `${tracker.clanTag} ` : '';
+        for (const player of tracker.players) {
+            if (player.playerId || !player.steamId) continue;
+
+            /* No name yet (the Steam profile could not be read when added): try again */
+            if (!player.name || player.name === '-') {
+                if (player.nextSearch && now < player.nextSearch) continue;
+                player.nextSearch = now + SEARCH_INTERVAL_MS;
+                const steamName = await Scrape.scrapeSteamProfileName(client, player.steamId);
+                if (!steamName) continue;
+                player.name = `${tag}${steamName}`;
+                changed = true;
+            }
+            const name = tag && player.name.startsWith(tag) ? player.name.slice(tag.length) : player.name;
+
+            /* Online now with that name */
+            const online = Object.keys(bmInstance.players || {}).find(e => bmInstance.players[e].name === name);
+            if (online) {
+                player.playerId = online;
+                delete player.nextSearch;
+                changed = true;
+                continue;
+            }
+
+            /* Search the server's players on BattleMetrics, every 10 minutes at most */
+            if (player.nextSearch && now < player.nextSearch) continue;
+            player.nextSearch = now + SEARCH_INTERVAL_MS;
+            const found = await require('../util/trackerResolve.js').searchBattlemetrics(bmInstance, name);
+            const match = found.find(e => e.name === name) ||
+                found.find(e => e.name.toLowerCase() === name.toLowerCase());
+            if (match) {
+                player.playerId = match.id;
+                delete player.nextSearch;
+                changed = true;
+            }
+        }
+        return changed;
+    },
+
     handler: async function (client, firstTime = false) {
         const searchSteamProfiles = (client.battlemetricsIntervalCounter === 0) ? true : false;
         const calledSteamProfiles = new Object();
@@ -101,6 +145,13 @@ module.exports = {
                         await DiscordMessages.sendTrackerMessage(guildId, trackerId);
                         continue;
                     }
+                }
+
+                /* Players added by Steam ID whose BattleMetrics player was not found yet (never played on
+                   this server, or the Steam name could not be read): keep looking for them */
+                if (await module.exports.findMissingPlayerIds(client, content, bmInstance)) {
+                    client.setInstance(guildId, instance);
+                    await DiscordMessages.sendTrackerMessage(guildId, trackerId);
                 }
 
                 const trackerPlayerIds = content.players.map(e => e.playerId);
