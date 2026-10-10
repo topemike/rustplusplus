@@ -56,6 +56,8 @@ module.exports = {
         for (const [id, timer] of Object.entries(rustplus.timers)) timer.timer.stop();
 
         if (rustplus.isDeleted) return;
+        /* Another connection already replaced this one: nothing to reconnect */
+        if (client.rustplusInstances[guildId] && client.rustplusInstances[guildId] !== rustplus) return;
 
         /* Was the disconnection unexpected? */
         if (client.activeRustplusInstances[guildId]) {

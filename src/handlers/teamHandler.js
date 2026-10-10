@@ -38,7 +38,32 @@ module.exports = {
         const newPlayers = rustplus.team.getNewPlayers(teamInfo);
         const leftPlayers = rustplus.team.getLeftPlayers(teamInfo);
 
+        /* The same change can be seen twice (the poll and the game's "team changed" message arrive
+           at the same time): each death / connection / team change is announced only once. */
+        if (!rustplus.teamNotified) rustplus.teamNotified = { death: {}, online: {}, member: {} };
+        const once = (kind, steamId, value) => {
+            if (rustplus.teamNotified[kind][steamId] === value) return false;
+            rustplus.teamNotified[kind][steamId] = value;
+            return true;
+        };
+        /* A death is announced once, and an older answer (with an older death) is not a new death */
+        const newDeath = (steamId, deathTime) => {
+            const time = Number(deathTime) || 0;
+            const last = rustplus.teamNotified.death[steamId];
+            if (time === 0) {
+                /* No death time from the server: at most one death notice every 30 s per player */
+                const at = rustplus.teamNotified.deathAt || (rustplus.teamNotified.deathAt = {});
+                if (at[steamId] && Date.now() - at[steamId] < 30 * 1000) return false;
+                at[steamId] = Date.now();
+                return true;
+            }
+            if (last !== undefined && time <= last) return false;
+            rustplus.teamNotified.death[steamId] = time;
+            return true;
+        };
+
         for (const steamId of leftPlayers) {
+            if (!once('member', steamId, false)) continue;
             const player = rustplus.team.getPlayer(steamId);
             const str = client.intlGet(guildId, 'playerLeftTheTeam', { name: player.name });
             await DiscordMessages.sendActivityNotificationMessage(
@@ -51,6 +76,7 @@ module.exports = {
         for (const steamId of newPlayers) {
             for (const player of teamInfo.members) {
                 if (player.steamId.toString() === steamId) {
+                    if (!once('member', steamId, true)) continue;
                     const str = client.intlGet(guildId, 'playerJoinedTheTeam', { name: player.name });
                     await DiscordMessages.sendActivityNotificationMessage(
                         guildId, serverId, Constants.COLOR_ACTIVE, str, steamId);
@@ -65,7 +91,7 @@ module.exports = {
             if (leftPlayers.includes(player.steamId)) continue;
             for (const playerUpdated of teamInfo.members) {
                 if (player.steamId === playerUpdated.steamId.toString()) {
-                    if (player.isGoneDead(playerUpdated)) {
+                    if (player.isGoneDead(playerUpdated) && newDeath(player.steamId, playerUpdated.deathTime)) {
                         const location = player.pos === null ? 'spawn' : player.pos.string;
                         const str = client.intlGet(guildId, 'playerJustDied', {
                             name: player.name,
@@ -101,7 +127,7 @@ module.exports = {
                         }
                     }
 
-                    if (player.isGoneOnline(playerUpdated)) {
+                    if (player.isGoneOnline(playerUpdated) && once('online', player.steamId, true)) {
                         const str = client.intlGet(guildId, 'playerJustConnected', { name: player.name });
                         await DiscordMessages.sendActivityNotificationMessage(
                             guildId, serverId, Constants.COLOR_ACTIVE, str, player.steamId);
@@ -114,7 +140,7 @@ module.exports = {
                         rustplus.updateConnections(player.steamId, str);
                     }
 
-                    if (player.isGoneOffline(playerUpdated)) {
+                    if (player.isGoneOffline(playerUpdated) && once('online', player.steamId, false)) {
                         const str = client.intlGet(guildId, 'playerJustDisconnected', { name: player.name });
                         await DiscordMessages.sendActivityNotificationMessage(
                             guildId, serverId, Constants.COLOR_INACTIVE, str, player.steamId);

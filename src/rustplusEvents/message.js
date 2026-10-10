@@ -32,6 +32,7 @@ module.exports = {
     name: 'message',
     async execute(rustplus, client, message) {
         if (!rustplus.isServerAvailable()) return rustplus.deleteThisRustplusInstance();
+        if (rustplus.stopIfReplaced && rustplus.stopIfReplaced()) return;
 
         if (!rustplus.isOperational) return;
 
