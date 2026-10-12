@@ -19,6 +19,7 @@
 */
 
 const Constants = require('../util/constants.js');
+const UpkeepClock = require('../util/upkeepClock.js');
 const BaseWatchHandler = require('./baseWatchHandler.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 
@@ -35,6 +36,25 @@ module.exports = {
         }
         else {
             rustplus.storageMonitorIntervalCounter += 1;
+        }
+
+        if (!rustplus.upkeepClock) rustplus.upkeepClock = {};
+
+        /* Tool Cupboards are read every minute: the protection end Rust+ sends has to be followed
+           closely to keep the countdown right (see upkeepClock.js). Everything else every 5 minutes. */
+        if (rustplus.storageMonitorIntervalCounter % 6 === 0 && rustplus.storageMonitorIntervalCounter !== 0) {
+            const instance = client.getInstance(guildId);
+            for (const entityId in instance.serverList[serverId].storageMonitors) {
+                if (instance.serverList[serverId].storageMonitors[entityId].type !== 'toolCupboard') continue;
+                if (!rustplus.storageMonitors.hasOwnProperty(entityId)) continue;
+                const info = await rustplus.getEntityInfoAsync(entityId);
+                if (!(await rustplus.isResponseValid(info))) continue;
+                const payload = info.entityInfo.payload;
+                if (payload.capacity !== Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY) continue;
+                rustplus.storageMonitors[entityId].items = payload.items;
+                rustplus.storageMonitors[entityId].expiry =
+                    UpkeepClock.correct(rustplus.upkeepClock, entityId, payload.protectionExpiry, payload.items);
+            }
         }
 
         if (rustplus.storageMonitorIntervalCounter === 0) {
@@ -64,9 +84,13 @@ module.exports = {
 
                     const prevItems = rustplus.storageMonitors.hasOwnProperty(entityId) ?
                         rustplus.storageMonitors[entityId].items : null;
+                    const isCupboard = info.entityInfo.payload.capacity === Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY;
+                    const expiry = isCupboard ? UpkeepClock.correct(rustplus.upkeepClock, entityId,
+                        info.entityInfo.payload.protectionExpiry, info.entityInfo.payload.items) :
+                        info.entityInfo.payload.protectionExpiry;
                     rustplus.storageMonitors[entityId] = {
                         items: info.entityInfo.payload.items,
-                        expiry: info.entityInfo.payload.protectionExpiry,
+                        expiry: expiry,
                         capacity: info.entityInfo.payload.capacity,
                         hasProtection: info.entityInfo.payload.hasProtection
                     }
@@ -103,7 +127,7 @@ module.exports = {
                     }
 
                     await BaseWatchHandler.onStorageUpdate(client, rustplus, entityId, prevItems,
-                        info.entityInfo.payload);
+                        { ...info.entityInfo.payload, protectionExpiry: expiry });
                 }
 
                 await DiscordMessages.sendStorageMonitorMessage(guildId, serverId, entityId);
