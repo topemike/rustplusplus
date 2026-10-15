@@ -34,7 +34,9 @@ module.exports = {
         needAdminPrivileges: !['false', '0', 'no'].includes(`${process.env.RPP_NEED_ADMIN_PRIVILEGES || ''}`.trim().toLowerCase()), /* No longer used: deleting is always for administrators and the current hoster (client.canManage) */
     },
     battlemetrics: {
-        token: process.env.RPP_BATTLEMETRICS_TOKEN || ''
+        token: process.env.RPP_BATTLEMETRICS_TOKEN || '',
+        /* How often BattleMetrics is asked (trackers, online players). Minimum 15 s. */
+        intervalSeconds: Math.max(15, parseInt(process.env.RPP_BATTLEMETRICS_INTERVAL_SECONDS) || 20)
     },
     healthMonitor: {
         /* Warn in Discord this many hours before FCM credentials expire */
