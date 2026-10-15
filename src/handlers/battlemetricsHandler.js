@@ -18,6 +18,7 @@
 
 */
 
+const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
@@ -81,6 +82,18 @@ module.exports = {
     },
 
     handler: async function (client, firstTime = false) {
+        /* A slow round (BattleMetrics slow to answer) must not overlap the next one */
+        if (client.battlemetricsBusy) return;
+        client.battlemetricsBusy = true;
+        try {
+            await module.exports.handlerRound(client, firstTime);
+        }
+        finally {
+            client.battlemetricsBusy = false;
+        }
+    },
+
+    handlerRound: async function (client, firstTime = false) {
         const searchSteamProfiles = (client.battlemetricsIntervalCounter === 0) ? true : false;
         const calledSteamProfiles = new Object();
 
@@ -248,7 +261,9 @@ module.exports = {
             }
         }
 
-        if (client.battlemetricsIntervalCounter === 29) {
+        /* Steam names are refreshed about every 30 minutes, whatever the interval */
+        const cyclesIn30Min = Math.max(1, Math.round(1800 / Config.battlemetrics.intervalSeconds));
+        if (client.battlemetricsIntervalCounter >= cyclesIn30Min - 1) {
             client.battlemetricsIntervalCounter = 0;
         }
         else {
