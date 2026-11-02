@@ -73,9 +73,22 @@ async function probe(rustplus, cameraId, listenMs = LISTEN_MS, withImage = true)
             if (typeof frame.verticalFov === 'number') fov = frame.verticalFov;
             for (const entity of frame.entities || []) {
                 if (entity.type === PLAYER) {
-                    const name = entity.name || `#${entity.entityId}`;
+                    const key = `${entity.entityId}`;
                     const d = Math.round(length(entity.position));
-                    if (!seen.has(name) || d < seen.get(name)) seen.set(name, d);
+                    const p = entity.position || {};
+                    const pos = { x: p.x || 0, y: p.y || 0, z: p.z || 0 };
+                    const prev = seen.get(key);
+                    if (!prev) {
+                        seen.set(key, { id: key, name: entity.name || null, distance: d, position: pos, first: pos, moved: false });
+                        continue;
+                    }
+                    /* Moving during the look (someone walking, not sleeping) */
+                    if (Math.sqrt((pos.x - prev.first.x) ** 2 + (pos.y - prev.first.y) ** 2 + (pos.z - prev.first.z) ** 2) > 1.5) {
+                        prev.moved = true;
+                    }
+                    if (!prev.name && entity.name) prev.name = entity.name;
+                    if (d < prev.distance) prev.distance = d;
+                    prev.position = pos;
                 }
                 else if (entity.type === TREE) trees++;
             }
@@ -97,7 +110,7 @@ async function probe(rustplus, cameraId, listenMs = LISTEN_MS, withImage = true)
 
         return {
             ok: true, info: info, frames: frames.length, fov: fov, trees: trees,
-            players: [...seen.entries()].map(([name, distance]) => ({ name, distance })),
+            players: [...seen.values()],
             image: image
         };
     }
@@ -124,7 +137,7 @@ function describe(cameraId, r) {
         `Ve hasta unos ${Math.round(i.farPlane)} m` + (r.fov ? `, ángulo vertical ${Math.round(r.fov)}°` : '') +
             `, imagen ${i.width}×${i.height}. Datos recibidos: ${r.frames}.`,
         r.players.length > 0 ?
-            `👤 Jugadores a la vista: ${r.players.map(p => `${p.name} (${p.distance} m)`).join(', ')}.` :
+            `👤 Jugadores a la vista: ${r.players.map(p => `${p.name || `#${p.id}`} (${p.distance} m)`).join(', ')}.` :
             '👤 Ningún jugador a la vista ahora mismo.'
     ];
     if (r.frames === 0) lines.push('⚠️ La cámara no mandó imagen: puede que el server tenga limitadas las cámaras en Rust+.');

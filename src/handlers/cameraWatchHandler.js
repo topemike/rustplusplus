@@ -21,7 +21,8 @@
 /*
  *  Camera watch: the bot looks at the base cameras by itself and warns in Discord when someone is seen.
  *  - Works while the bot's account is not in the game (Rust+ answers "player_online" otherwise).
- *  - Always warns; with @everyone when nobody of the team is online.
+ *  - Warns for players that are not of the team (teammates come with their name; players sleeping in the
+ *    base are ignored); with @everyone when nobody of the team is online.
  *  - One warning when someone appears; again only if more people appear or they are still there
  *    after REPEAT_MS. "Gone" after QUIET_MS without seeing anyone.
  *  Commands: !vigilar (status) · !vigilar <CODE> (add) · !vigilar quitar <CODE> · !vigilar on / off
@@ -56,19 +57,73 @@ function alertChannel(instance) {
     return instance.channelId.base || instance.channelId.activity;
 }
 
-async function sendAlert(client, guildId, rustplus, cameraId, players, image, mention) {
+const MOVE_M = 1.5;                 /* moved more than this between looks: awake, not sleeping */
+
+function teamNames(rustplus) {
+    if (!rustplus.team || !rustplus.team.players) return new Set();
+    return new Set(rustplus.team.players.map(p => `${p.name}`.toLowerCase()));
+}
+
+function moved(a, b) {
+    return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2) > MOVE_M;
+}
+
+/*
+ *  Who is in view, sorted out:
+ *  - team: a teammate (Rust+ sends the names of players that are awake)
+ *  - stranger: someone with a name that is not of the team, or someone without a name that moves
+ *  - sleeper: without a name and not moving (a player sleeping in the base) -> ignored
+ *  A player without a name seen for the first time waits for the next look to know if it moves.
+ */
+function classify(cam, players, names, now) {
+    const result = { team: [], strangers: [], sleepers: 0 };
+    const current = new Set();
+    for (const p of players) {
+        current.add(p.id);
+        if (p.name) {
+            if (names.has(p.name.toLowerCase())) result.team.push(p);
+            else result.strangers.push(p);
+            continue;
+        }
+        const known = cam.entities[p.id];
+        if (!known) {
+            cam.entities[p.id] = { position: p.position, firstSeen: now, moving: !!p.moved };
+            if (p.moved) result.strangers.push(p);
+            continue;
+        }
+        if (p.moved) known.moving = true;
+        if (moved(known.position, p.position)) known.moving = true;
+        known.position = p.position;
+        if (known.moving) result.strangers.push(p);
+        else result.sleepers++;
+    }
+    /* forget who is not in view any more */
+    for (const id of Object.keys(cam.entities)) if (!current.has(id)) delete cam.entities[id];
+    return result;
+}
+
+async function sendAlert(client, guildId, rustplus, cameraId, view, image, mention) {
     const instance = client.getInstance(guildId);
     const DiscordTools = require('../discordTools/discordTools.js');
-    const channel = DiscordTools.getTextChannelById(guildId, alertChannel(instance));
+    const channelId = alertChannel(instance);
+    const channel = DiscordTools.getTextChannelById(guildId, channelId);
     if (!channel) return;
-    const who = players.map(p => `a ${p.distance} m`).join(', ');
+    const strangers = view.strangers.map(p => p.name ? `${p.name} a ${p.distance} m` : `desconocido a ${p.distance} m`);
+    const online = teamOnline(rustplus);
     const lines = [
-        `👁️ **${cameraId}**: ${players.length === 1 ? '1 jugador' : `${players.length} jugadores`} a la vista (${who}).`,
-        mention ? '🔴 No hay nadie del equipo conectado.' : `🟢 Hay ${teamOnline(rustplus)} del equipo conectados.`
+        `👁️ **${cameraId}**: ${view.strangers.length === 1 ? '1 jugador que no es del equipo' :
+            `${view.strangers.length} jugadores que no son del equipo`} (${strangers.join(', ')}).`
     ];
+    if (view.team.length > 0) lines.push(`Del equipo a la vista: ${view.team.map(p => p.name).join(', ')}.`);
+    lines.push(mention ? '🔴 No hay nadie del equipo conectado.' :
+        `🟢 ${online === 1 ? 'Hay 1 compañero conectado' : `Hay ${online} compañeros conectados`}.`);
     const payload = { content: (mention ? '@everyone\n' : '') + lines.join('\n') };
     if (image) payload.files = [{ attachment: image, name: 'camara.png' }];
-    try { await channel.send(payload); }
+    try {
+        await channel.send(payload);
+        client.log(client.intlGet(null, 'infoCap'),
+            `Camera watch ${cameraId}: warned in #${channel.name} (${view.strangers.length} not of the team)`);
+    }
     catch (e) { client.log(client.intlGet(null, 'errorCap'), `Camera watch alert: ${e}`, 'error'); }
 }
 
@@ -86,7 +141,7 @@ async function tickGuild(client, guildId, now) {
     try {
         const cameraId = cfg.cameras[st.index % cfg.cameras.length];
         st.index++;
-        const cam = st.cams[cameraId] || (st.cams[cameraId] = { lastSeen: 0, lastAlert: 0, lastCount: 0 });
+        const cam = st.cams[cameraId] || (st.cams[cameraId] = { lastSeen: 0, lastAlert: 0, lastCount: 0, entities: {} });
 
         const look = await CameraProbe.probe(rustplus, cameraId, LOOK_MS, false);
         if (!look.ok) {
@@ -97,24 +152,23 @@ async function tickGuild(client, guildId, now) {
             return;
         }
         cam.errorLogged = false;
-        if (look.players.length === 0) {
+        const view = classify(cam, look.players, teamNames(rustplus), now);
+        if (view.strangers.length === 0) {
             if (cam.lastSeen && now - cam.lastSeen > QUIET_MS) cam.lastCount = 0;
             return;
         }
 
         const isNew = !cam.lastSeen || now - cam.lastSeen > QUIET_MS;
-        const more = look.players.length > cam.lastCount;
+        const more = view.strangers.length > cam.lastCount;
         const remind = now - cam.lastAlert >= REPEAT_MS;
         cam.lastSeen = now;
         if (!(isNew || more || remind)) return;
 
         cam.lastAlert = now;
-        cam.lastCount = look.players.length;
+        cam.lastCount = view.strangers.length;
         /* A clearer picture for the warning */
         const full = await CameraProbe.probe(rustplus, cameraId, 6000, true);
-        const players = full.ok && full.players.length > 0 ? full.players : look.players;
-        await sendAlert(client, guildId, rustplus, cameraId, players, full.ok ? full.image : null,
-            teamOnline(rustplus) === 0);
+        await sendAlert(client, guildId, rustplus, cameraId, view, full.ok ? full.image : null, teamOnline(rustplus) === 0);
     }
     catch (e) {
         client.log(client.intlGet(null, 'errorCap'), `Camera watch: ${e}`, 'error');
