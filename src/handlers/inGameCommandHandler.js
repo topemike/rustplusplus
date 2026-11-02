@@ -126,6 +126,9 @@ module.exports = {
         else if ((reply = DeepSeaHandler.command(rustplus, client, command)) !== null) {
             rustplus.sendInGameMessage(reply);
         }
+        else if ((reply = require('./cameraWatchHandler.js').command(rustplus, client, command)) !== null) {
+            rustplus.sendInGameMessage(reply);
+        }
         else if ((reply = MarketHandler.getCommandFind(rustplus, client, command)) !== null) {
             rustplus.sendInGameMessage(reply);
         }

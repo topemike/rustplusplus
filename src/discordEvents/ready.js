@@ -85,6 +85,7 @@ module.exports = {
         require('../util/healthMonitor.js').start(client);
         require('../util/backup.js').start(client);
         require('../handlers/raidHandler.js').start(client);
+        require('../handlers/cameraWatchHandler.js').start(client);
         require('../handlers/deepSeaHandler.js').start(client);
         require('../handlers/dailySummaryHandler.js').start(client);
         require('../web/server.js').start(client);

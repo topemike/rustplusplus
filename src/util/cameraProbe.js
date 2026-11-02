@@ -36,7 +36,7 @@ function length(v) {
 /**
  *  @return {Object} { ok, error?, info, frames, players: [{ name, distance }], trees, fov, image (PNG buffer|null) }
  */
-async function probe(rustplus, cameraId, listenMs = LISTEN_MS) {
+async function probe(rustplus, cameraId, listenMs = LISTEN_MS, withImage = true) {
     if (busy.has(rustplus.guildId)) return { ok: false, error: 'busy' };
     busy.add(rustplus.guildId);
     const frames = [];
@@ -82,7 +82,7 @@ async function probe(rustplus, cameraId, listenMs = LISTEN_MS) {
         }
 
         let image = null;
-        if (frames.length > 0) {
+        if (withImage && frames.length > 0) {
             try {
                 /* Each frame only fills part of the picture: with all the frames received the picture is
                    complete (instead of the last 10). Then it is enlarged 3x so it is easier to see. */
