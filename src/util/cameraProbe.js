@@ -84,7 +84,13 @@ async function probe(rustplus, cameraId, listenMs = LISTEN_MS) {
         let image = null;
         if (frames.length > 0) {
             try {
-                image = await Camera.prototype._renderCameraFrame.call({}, frames.slice(-10), info.width, info.height);
+                /* Each frame only fills part of the picture: with all the frames received the picture is
+                   complete (instead of the last 10). Then it is enlarged 3x so it is easier to see. */
+                const png = await Camera.prototype._renderCameraFrame.call({}, frames, info.width, info.height);
+                const Jimp = require('jimp');
+                const picture = await Jimp.read(png);
+                picture.resize(info.width * 3, info.height * 3, Jimp.RESIZE_BICUBIC);
+                image = await picture.getBufferAsync(Jimp.MIME_PNG);
             }
             catch (e) { image = null; }
         }
