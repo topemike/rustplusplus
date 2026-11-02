@@ -235,6 +235,22 @@ module.exports = {
             commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxTravelingVendor')}`) {
             rustplus.sendInGameMessage(rustplus.getCommandTravelingVendor());
         }
+        else if (new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(cam|camara|cámara)\\s+\\S+`).test(commandLowerCase)) {
+            /* Camera test: the summary in the game, and the picture in the Discord team chat channel */
+            const cameraId = command.trim().split(/\s+/)[1];
+            const CameraProbe = require('./../util/cameraProbe.js');
+            const result = await CameraProbe.probe(rustplus, cameraId);
+            const text = CameraProbe.describe(cameraId, result);
+            rustplus.sendInGameMessage(text.split('\n').map(l => l.replace(/[📷👤⚠️]/gu, '').trim()).join(' '));
+            const channelId = client.getInstance(guildId).channelId.teamchat;
+            const channel = channelId ? require('../discordTools/discordTools.js').getTextChannelById(guildId, channelId) : null;
+            if (channel) {
+                const payload = { content: text };
+                if (result.ok && result.image) payload.files = [{ attachment: result.image, name: 'camara.png' }];
+                try { await channel.send(payload); }
+                catch (e) { client.log(client.intlGet(null, 'errorCap'), `Camera test: ${e}`, 'error'); }
+            }
+        }
         else {
             /* Maybe a custom command? */
 

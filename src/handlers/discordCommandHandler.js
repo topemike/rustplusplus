@@ -222,6 +222,17 @@ module.exports = {
             commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxTravelingVendor')}`) {
             response = rustplus.getCommandTravelingVendor();
         }
+        else if (/^\S+$/.test(prefix) && new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(cam|camara|cámara)\\s+\\S+`).test(commandLowerCase)) {
+            /* Camera test: "!cam BaseControl1" -> what the camera sees (players, range) and a picture */
+            const cameraId = command.trim().split(/\s+/)[1];
+            const CameraProbe = require('../util/cameraProbe.js');
+            const result = await CameraProbe.probe(rustplus, cameraId);
+            const text = CameraProbe.describe(cameraId, result);
+            const payload = { content: text };
+            if (result.ok && result.image) payload.files = [{ attachment: result.image, name: 'camara.png' }];
+            try { await message.channel.send(payload); }
+            catch (e) { client.log(client.intlGet(null, 'errorCap'), `Camera test: ${e}`, 'error'); }
+        }
         else {
             /* Smart Switches/ Group Switches are not currently supported through discord. */
             return false;
