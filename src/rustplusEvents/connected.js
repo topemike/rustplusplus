@@ -29,6 +29,7 @@ module.exports = {
     async execute(rustplus, client) {
         if (!rustplus.isServerAvailable()) return rustplus.deleteThisRustplusInstance();
         if (rustplus.stopIfReplaced()) return;
+        rustplus.wasConnected = true;
 
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'connectedToServer'));
 
@@ -68,6 +69,19 @@ module.exports = {
             return;
         }
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'rustplusOperational'));
+
+        /* Remember how this server lets Rust+ in (direct or through Facepunch's proxy) */
+        {
+            const remember = client.getInstance(guildId);
+            if (remember.serverList[serverId] &&
+                !!remember.serverList[serverId].useFacepunchProxy !== !!rustplus.useFacepunchProxy) {
+                remember.serverList[serverId].useFacepunchProxy = !!rustplus.useFacepunchProxy;
+                client.setInstance(guildId, remember);
+                rustplus.log(client.intlGet(null, 'infoCap'), `This server lets Rust+ in ${rustplus.useFacepunchProxy ?
+                    "through Facepunch's proxy" : 'directly'}: remembered.`);
+            }
+            if (client.rustplusFlipProxy) delete client.rustplusFlipProxy[guildId];
+        }
 
         const info = await rustplus.getInfoAsync();
         if (await rustplus.isResponseValid(info)) rustplus.info = new Info(info.info)
