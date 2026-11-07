@@ -206,7 +206,8 @@ module.exports = (client, guild) => {
                 serverIp: instance.serverList[serverId].serverIp,
                 appPort: instance.serverList[serverId].appPort,
                 steamId: instance.serverList[serverId].steamId,
-                playerToken: instance.serverList[serverId].playerToken
+                playerToken: instance.serverList[serverId].playerToken,
+                relayServerId: instance.serverList[serverId].relayServerId || null
             };
         }
     }

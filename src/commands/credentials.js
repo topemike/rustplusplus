@@ -147,7 +147,7 @@ async function addCredentials(client, interaction, verifyId) {
     /* Re-adding an already registered account refreshes it (new GCM creds and/or auth token). */
     const existing = credentials[steamId];
     if (existing && existing.discord_user_id !== interaction.member.user.id) {
-        if (Config.discord.needAdminPrivileges && !client.isAdministrator(interaction)) {
+        if (!client.isAdministrator(interaction)) {
             const str = client.intlGet(guildId, 'credentialsAlreadyRegistered', { steamId: steamId });
             await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
             client.log(client.intlGet(null, 'warningCap'), str);

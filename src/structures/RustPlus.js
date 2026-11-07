@@ -47,7 +47,7 @@ const TOKENS_REPLENISH = 3;     /* Per second */
 
 class RustPlus extends RustPlusLib {
     constructor(guildId, serverIp, appPort, steamId, playerToken) {
-        super(serverIp, appPort, steamId, playerToken, RustPlus.useProxyFor(guildId, `${serverIp}-${appPort}`));
+        super(serverIp, appPort, steamId, playerToken);
 
         this.serverId = `${this.server}-${this.port}`;
         this.guildId = guildId;
@@ -113,21 +113,6 @@ class RustPlus extends RustPlusLib {
         this.mapMarkers = null;     /* Stores the MapMarkers structure. */
 
         this.loadRustPlusEvents();
-    }
-
-    /*
-     *  Some servers only let Rust+ in through Facepunch's proxy (the way the phone app connects) and cut
-     *  direct connections ("socket hang up"). The way that worked is remembered per server; while it
-     *  does not connect, every new attempt tries the other way.
-     */
-    static useProxyFor(guildId, serverId) {
-        const client = Client.client;
-        let instance = null;
-        try { instance = client.getInstance(guildId); } catch (e) { instance = null; }
-        const server = instance && instance.serverList ? instance.serverList[serverId] : null;
-        let proxy = !!(server && server.useFacepunchProxy);
-        if (client.rustplusFlipProxy && client.rustplusFlipProxy[guildId]) proxy = !proxy;
-        return proxy;
     }
 
     loadRustPlusEvents() {
