@@ -25,7 +25,7 @@ const Config = require('../../config');
 
 class RustPlusLite extends RustPlusLib {
     constructor(guildId, logger, rustplus, serverIp, appPort, steamId, playerToken) {
-        super(serverIp, appPort, steamId, playerToken);
+        super(serverIp, appPort, steamId, playerToken, rustplus ? rustplus.useFacepunchProxy : false);
 
         this.serverId = `${this.server}-${this.port}`;
         this.guildId = guildId;
