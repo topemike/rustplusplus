@@ -21,11 +21,12 @@
 const RustPlusLib = require('@liamcottle/rustplus.js');
 
 const Client = require('../../index.ts');
+const RustRelay = require('../util/rustRelay.js');
 const Config = require('../../config');
 
 class RustPlusLite extends RustPlusLib {
     constructor(guildId, logger, rustplus, serverIp, appPort, steamId, playerToken) {
-        super(serverIp, appPort, steamId, playerToken, rustplus ? rustplus.useFacepunchProxy : false);
+        super(serverIp, appPort, steamId, playerToken);
 
         this.serverId = `${this.server}-${this.port}`;
         this.guildId = guildId;
@@ -35,6 +36,13 @@ class RustPlusLite extends RustPlusLib {
         this.isActive = true;
 
         this.loadRustPlusLiteEvents();
+    }
+
+    /* Same as RustPlus.connect(): relay when possible, legacy direct connection otherwise. */
+    connect() {
+        const relay = RustRelay.resolve(this.guildId, this.server, this.port, this.playerId);
+        if (!relay) return super.connect();
+        RustRelay.connect(this, relay);
     }
 
     loadRustPlusLiteEvents() {

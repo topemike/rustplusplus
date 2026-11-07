@@ -27,15 +27,6 @@ module.exports = {
 
         rustplus.log(client.intlGet(null, 'errorCap'), err, 'error');
 
-        /* It did not even connect: the next attempt goes the other way (direct / Facepunch proxy) */
-        if (!rustplus.wasConnected && !rustplus.flipNoted) {
-            rustplus.flipNoted = true;
-            if (!client.rustplusFlipProxy) client.rustplusFlipProxy = {};
-            client.rustplusFlipProxy[rustplus.guildId] = !client.rustplusFlipProxy[rustplus.guildId];
-            rustplus.log(client.intlGet(null, 'infoCap'), `Next attempt ${rustplus.useFacepunchProxy ?
-                'directly' : "through Facepunch's Rust+ proxy"}.`);
-        }
-
         switch (err.code) {
             case 'ETIMEDOUT': {
                 errorTimedOut(rustplus, client, err);
