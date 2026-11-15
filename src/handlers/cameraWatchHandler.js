@@ -295,7 +295,18 @@ function command(rustplus, client, raw) {
         return before === cfg.cameras.length ? `👁️ ${id} no estaba en la vigilancia.` : `👁️ ${id} quitada de la vigilancia.`;
     }
     const id = args[0];
-    if (cfg.cameras.some(c => c === id)) return `👁️ ${id} ya está en la vigilancia.`;
+    /* "!vigilar CODIGO off" = stop watching that camera; "!vigilar CODIGO on" = watch it */
+    const a1 = (args[1] || '').toLowerCase();
+    if (['off', 'apagar', 'desactivar', 'quitar'].includes(a1)) {
+        const before = cfg.cameras.length;
+        cfg.cameras = cfg.cameras.filter(c => c.toLowerCase() !== id.toLowerCase());
+        save();
+        return before === cfg.cameras.length ? `👁️ ${id} no estaba en la vigilancia.` : `👁️ ${id} ya no se vigila.`;
+    }
+    if (args.length > 1 && !['on', 'encender', 'activar'].includes(a1)) {
+        return 'Uso: !vigilar CODIGO (on) · !vigilar CODIGO off · !vigilar quitar CODIGO · !vigilar on/off';
+    }
+    if (cfg.cameras.some(c => c.toLowerCase() === id.toLowerCase())) return `👁️ ${id} ya está en la vigilancia.`;
     cfg.cameras.push(id);
     save();
     return `👁️ ${id} añadida a la vigilancia. Avisará cuando vea a alguien (con @everyone si no hay nadie del equipo conectado).`;
