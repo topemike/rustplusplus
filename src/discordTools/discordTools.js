@@ -272,32 +272,31 @@ module.exports = {
                 }
             }
 
-            /* Fix for messages older than 14 days */
-            let messages = [];
-            try {
-                messages = await channel.messages.fetch({ limit: 100 });
-            }
-            catch (e) {
-                Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                    Client.client.intlGet(null, 'couldNotPerformMessagesFetch', { channel: channelId }), 'error');
-            }
-
-            if (Object.keys(messages).length === 0) {
-                return;
-            }
-
-            for (let message of messages) {
-                message = message[1];
-                if (!message.author.bot) {
-                    break;
-                }
-
+            /* Messages older than 14 days cannot be bulk deleted: delete the bot's own ones one by one.
+               (messages is a Collection: .size, not Object.keys; other people's messages are skipped,
+               not a reason to stop.) */
+            for (let round = 0; round < Math.ceil(numberOfMessages / 100); round++) {
+                let messages = null;
                 try {
-                    await message.delete();
+                    messages = await channel.messages.fetch({ limit: 100 });
                 }
                 catch (e) {
                     Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                        Client.client.intlGet(null, 'couldNotPerformMessageDelete'), 'error');
+                        Client.client.intlGet(null, 'couldNotPerformMessagesFetch', { channel: channelId }), 'error');
+                    return;
+                }
+                const own = messages ? [...messages.values()].filter(m => m.author && m.author.bot &&
+                    Client.client.user && m.author.id === Client.client.user.id) : [];
+                if (own.length === 0) return;
+
+                for (const message of own) {
+                    try {
+                        await message.delete();
+                    }
+                    catch (e) {
+                        Client.client.log(Client.client.intlGet(null, 'errorCap'),
+                            Client.client.intlGet(null, 'couldNotPerformMessageDelete'), 'error');
+                    }
                 }
             }
         }
