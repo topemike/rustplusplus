@@ -26,19 +26,21 @@
  *  - One warning when someone appears; again only if more people appear or they are still there
  *    after REPEAT_MS. "Gone" after QUIET_MS without seeing anyone.
  *  Commands: !vigilar (status) · !vigilar <CODE> (add) · !vigilar quitar <CODE> · !vigilar on / off
+ *            !vigilar amigo NAME / quitaramigo NAME / amigos · !vigilar pausa 30m / seguir
  */
 
 const CameraProbe = require('../util/cameraProbe.js');
 
 const TICK_MS = 5 * 1000;           /* one camera looked at every 5 s (in turns) */
 const LOOK_MS = 3 * 1000;           /* how long each look lasts */
-const QUIET_MS = 2 * 60 * 1000;     /* nobody seen for this long: the next one is a new warning */
-const REPEAT_MS = 5 * 60 * 1000;    /* still there: remind every 5 minutes */
+const QUIET_MS = 3 * 60 * 1000;     /* nobody seen (on any camera) for this long: the next one is a new warning */
+const REPEAT_MS = 10 * 60 * 1000;   /* still around: remind every 10 minutes */
 
 const state = {};                   /* guildId -> { index, cams: { id: { lastSeen, lastAlert, lastCount } }, busy } */
 
 function settings(instance) {
     if (!instance.cameraWatch) instance.cameraWatch = { enabled: true, cameras: [] };
+    if (!Array.isArray(instance.cameraWatch.friends)) instance.cameraWatch.friends = [];
     return instance.cameraWatch;
 }
 
@@ -59,9 +61,12 @@ function alertChannel(instance) {
 
 const MOVE_M = 1.5;                 /* moved more than this between looks: awake, not sleeping */
 
-function teamNames(rustplus) {
-    if (!rustplus.team || !rustplus.team.players) return new Set();
-    return new Set(rustplus.team.players.map(p => `${p.name}`.toLowerCase()));
+function teamNames(rustplus, cfg) {
+    const names = new Set((cfg && cfg.friends ? cfg.friends : []).map(n => `${n}`.toLowerCase()));
+    if (rustplus.team && rustplus.team.players) {
+        for (const p of rustplus.team.players) names.add(`${p.name}`.toLowerCase());
+    }
+    return names;
 }
 
 function moved(a, b) {
@@ -122,7 +127,7 @@ async function sendAlert(client, guildId, rustplus, cameraId, view, image, menti
     try {
         await channel.send(payload);
         client.log(client.intlGet(null, 'infoCap'),
-            `Camera watch ${cameraId}: warned in #${channel.name} (${view.strangers.length} not of the team)`);
+            `Camera watch ${cameraId}: warned in #${channel.name} (not of the team: ${strangers.join(', ')})`);
     }
     catch (e) { client.log(client.intlGet(null, 'errorCap'), `Camera watch alert: ${e}`, 'error'); }
 }
@@ -133,6 +138,7 @@ async function tickGuild(client, guildId, now) {
     const instance = client.getInstance(guildId);
     const cfg = settings(instance);
     if (!cfg.enabled || cfg.cameras.length === 0) return;
+    if (cfg.pausedUntil && now < cfg.pausedUntil) return;
     if (hosterInGame(rustplus)) return;     /* Rust+ does not allow cameras while in the game */
 
     const st = state[guildId] || (state[guildId] = { index: 0, cams: {}, busy: false });
@@ -152,20 +158,22 @@ async function tickGuild(client, guildId, now) {
             return;
         }
         cam.errorLogged = false;
-        const view = classify(cam, look.players, teamNames(rustplus), now);
-        if (view.strangers.length === 0) {
-            if (cam.lastSeen && now - cam.lastSeen > QUIET_MS) cam.lastCount = 0;
-            return;
-        }
+        const view = classify(cam, look.players, teamNames(rustplus, cfg), now);
+        if (view.strangers.length === 0) return;
 
-        const isNew = !cam.lastSeen || now - cam.lastSeen > QUIET_MS;
-        const more = view.strangers.length > cam.lastCount;
-        const remind = now - cam.lastAlert >= REPEAT_MS;
-        cam.lastSeen = now;
+        /* One incident for all the cameras: someone walking past several cameras is one warning.
+           Again only if more people are seen at once, or every REPEAT_MS while it goes on. */
+        const inc = st.incident;
+        const isNew = !inc || now - inc.lastSeen > QUIET_MS;
+        if (isNew) st.incident = { lastSeen: now, lastAlert: 0, maxCount: 0 };
+        const incident = st.incident;
+        incident.lastSeen = now;
+        const more = view.strangers.length > incident.maxCount;
+        const remind = now - incident.lastAlert >= REPEAT_MS;
         if (!(isNew || more || remind)) return;
 
-        cam.lastAlert = now;
-        cam.lastCount = view.strangers.length;
+        incident.lastAlert = now;
+        incident.maxCount = Math.max(incident.maxCount, view.strangers.length);
         /* A clearer picture for the warning */
         const full = await CameraProbe.probe(rustplus, cameraId, 6000, true);
         await sendAlert(client, guildId, rustplus, cameraId, view, full.ok ? full.image : null, teamOnline(rustplus) === 0);
@@ -193,10 +201,47 @@ function command(rustplus, client, raw) {
 
     if (args.length === 0) {
         if (cfg.cameras.length === 0) return '👁️ Vigilancia: ninguna cámara. Añade una con !vigilar CODIGO';
-        const paused = hosterInGame(rustplus) ? ' (en pausa: la cuenta del bot está en el juego)' : '';
-        return `👁️ Vigilancia ${cfg.enabled ? 'ACTIVADA' : 'DESACTIVADA'}${paused}. Cámaras: ${cfg.cameras.join(', ')}.`;
+        let paused = hosterInGame(rustplus) ? ' (en pausa: la cuenta del bot está en el juego)' : '';
+        if (cfg.pausedUntil && Date.now() < cfg.pausedUntil) {
+            paused = ` (en pausa ${Math.ceil((cfg.pausedUntil - Date.now()) / 60000)} min más; !vigilar seguir para quitarla)`;
+        }
+        const friends = cfg.friends.length > 0 ? ` Amigos (no avisan): ${cfg.friends.join(', ')}.` : '';
+        return `👁️ Vigilancia ${cfg.enabled ? 'ACTIVADA' : 'DESACTIVADA'}${paused}. Cámaras: ${cfg.cameras.join(', ')}.${friends}`;
     }
     const a0 = args[0].toLowerCase();
+    const rest = args.slice(1).join(' ');
+
+    /* Allies that are not in the in-game team (e.g. more than the team limit): they do not warn */
+    if (['amigo', 'friend'].includes(a0)) {
+        if (!rest) return 'Uso: !vigilar amigo NOMBRE (el nombre exacto del juego)';
+        if (!cfg.friends.some(f => f.toLowerCase() === rest.toLowerCase())) cfg.friends.push(rest);
+        save();
+        return `👁️ ${rest} no hará saltar la vigilancia (si Rust+ manda su nombre).`;
+    }
+    if (['quitaramigo', 'unfriend'].includes(a0)) {
+        const before = cfg.friends.length;
+        cfg.friends = cfg.friends.filter(f => f.toLowerCase() !== rest.toLowerCase());
+        save();
+        return before === cfg.friends.length ? `👁️ ${rest} no estaba en los amigos.` : `👁️ ${rest} quitado de los amigos.`;
+    }
+    if (['amigos', 'friends'].includes(a0)) {
+        return cfg.friends.length > 0 ? `👁️ Amigos (no avisan): ${cfg.friends.join(', ')}.` : '👁️ No hay amigos añadidos.';
+    }
+
+    /* Silence it for a while: !vigilar pausa 30m / 2h (1 hour by default) */
+    if (['pausa', 'pause'].includes(a0)) {
+        const m = (args[1] || '1h').match(/^(\d+)\s*(m|min|h)?$/i);
+        if (!m) return 'Uso: !vigilar pausa 30m  (o 2h)';
+        const minutes = parseInt(m[1]) * ((m[2] || 'm').toLowerCase() === 'h' ? 60 : 1);
+        cfg.pausedUntil = Date.now() + Math.min(minutes, 24 * 60) * 60 * 1000;
+        save();
+        return `👁️ Vigilancia en pausa ${Math.min(minutes, 24 * 60)} min. !vigilar seguir para reanudarla antes.`;
+    }
+    if (['seguir', 'resume', 'reanudar'].includes(a0)) {
+        delete cfg.pausedUntil;
+        save();
+        return '👁️ Vigilancia reanudada.';
+    }
     if (['on', 'encender', 'activar'].includes(a0)) {
         cfg.enabled = true; save();
         return '👁️ Vigilancia de cámaras activada.';
