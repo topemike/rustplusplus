@@ -26,7 +26,7 @@
  *  - One warning when someone appears; again only if more people appear or they are still there
  *    after REPEAT_MS. "Gone" after QUIET_MS without seeing anyone.
  *  Commands: !vigilar (status) · !vigilar <CODE> (add) · !vigilar quitar <CODE> · !vigilar on / off
- *            !vigilar amigo NAME / quitaramigo NAME / amigos · !vigilar pausa 30m / seguir
+ *            !vigilar amigo STEAMID|NAME / quitaramigo / amigos · !vigilar pausa 30m / seguir
  */
 
 const CameraProbe = require('../util/cameraProbe.js');
@@ -41,7 +41,24 @@ const state = {};                   /* guildId -> { index, cams: { id: { lastSee
 function settings(instance) {
     if (!instance.cameraWatch) instance.cameraWatch = { enabled: true, cameras: [] };
     if (!Array.isArray(instance.cameraWatch.friends)) instance.cameraWatch.friends = [];
+    if (!Array.isArray(instance.cameraWatch.friendIds)) instance.cameraWatch.friendIds = [];
     return instance.cameraWatch;
+}
+
+const STEAM_ID = /^7656\d{13}$/;
+const NAME_REFRESH_MS = 30 * 60 * 1000;
+
+/* Allies saved by Steam ID: their current Steam name is looked up again every 30 minutes, so a
+   name change is followed (the cameras only give names, not Steam IDs). */
+async function refreshFriendNames(client, guildId, cfg, now) {
+    let changed = false;
+    for (const f of cfg.friendIds) {
+        if (f.checked && now - f.checked < NAME_REFRESH_MS) continue;
+        f.checked = now;
+        const name = await require('../util/scrape.js').scrapeSteamProfileName(client, f.steamId);
+        if (name && name !== f.name) { f.name = name; changed = true; }
+    }
+    if (changed) client.setInstance(guildId, client.getInstance(guildId));
 }
 
 function hosterInGame(rustplus) {
@@ -63,6 +80,7 @@ const MOVE_M = 1.5;                 /* moved more than this between looks: awake
 
 function teamNames(rustplus, cfg) {
     const names = new Set((cfg && cfg.friends ? cfg.friends : []).map(n => `${n}`.toLowerCase()));
+    for (const f of (cfg && cfg.friendIds ? cfg.friendIds : [])) if (f.name) names.add(`${f.name}`.toLowerCase());
     if (rustplus.team && rustplus.team.players) {
         for (const p of rustplus.team.players) names.add(`${p.name}`.toLowerCase());
     }
@@ -139,7 +157,9 @@ async function tickGuild(client, guildId, now) {
     const cfg = settings(instance);
     if (!cfg.enabled || cfg.cameras.length === 0) return;
     if (cfg.pausedUntil && now < cfg.pausedUntil) return;
-    if (hosterInGame(rustplus)) return;     /* Rust+ does not allow cameras while in the game */
+    if (hosterInGame(rustplus)) return;
+    try { await refreshFriendNames(client, guildId, cfg, now); }
+    catch (e) { /* the old names are kept */ }     /* Rust+ does not allow cameras while in the game */
 
     const st = state[guildId] || (state[guildId] = { index: 0, cams: {}, busy: false });
     if (st.busy) return;
@@ -186,6 +206,10 @@ async function tickGuild(client, guildId, now) {
     }
 }
 
+function friendList(cfg) {
+    return [...cfg.friendIds.map(f => `${f.name || '(buscando nombre…)'} [${f.steamId}]`), ...cfg.friends].join(', ');
+}
+
 function command(rustplus, client, raw) {
     const prefix = rustplus.generalSettings.prefix;
     const text = `${raw}`.trim();
@@ -205,7 +229,8 @@ function command(rustplus, client, raw) {
         if (cfg.pausedUntil && Date.now() < cfg.pausedUntil) {
             paused = ` (en pausa ${Math.ceil((cfg.pausedUntil - Date.now()) / 60000)} min más; !vigilar seguir para quitarla)`;
         }
-        const friends = cfg.friends.length > 0 ? ` Amigos (no avisan): ${cfg.friends.join(', ')}.` : '';
+        const list = friendList(cfg);
+        const friends = list ? ` Amigos (no avisan): ${list}.` : '';
         return `👁️ Vigilancia ${cfg.enabled ? 'ACTIVADA' : 'DESACTIVADA'}${paused}. Cámaras: ${cfg.cameras.join(', ')}.${friends}`;
     }
     const a0 = args[0].toLowerCase();
@@ -213,19 +238,30 @@ function command(rustplus, client, raw) {
 
     /* Allies that are not in the in-game team (e.g. more than the team limit): they do not warn */
     if (['amigo', 'friend'].includes(a0)) {
-        if (!rest) return 'Uso: !vigilar amigo NOMBRE (el nombre exacto del juego)';
+        if (!rest) return 'Uso: !vigilar amigo STEAMID (o el nombre exacto del juego)';
+        const idMatch = rest.match(/(7656\d{13})/);
+        if (idMatch && STEAM_ID.test(idMatch[1])) {
+            const steamId = idMatch[1];
+            if (!cfg.friendIds.some(f => f.steamId === steamId)) cfg.friendIds.push({ steamId: steamId, name: null, checked: 0 });
+            save();
+            return `👁️ Steam ID ${steamId} añadido a los amigos: en unos segundos el bot mira su nombre de Steam y lo sigue aunque se lo cambie.`;
+        }
         if (!cfg.friends.some(f => f.toLowerCase() === rest.toLowerCase())) cfg.friends.push(rest);
         save();
         return `👁️ ${rest} no hará saltar la vigilancia (si Rust+ manda su nombre).`;
     }
     if (['quitaramigo', 'unfriend'].includes(a0)) {
-        const before = cfg.friends.length;
-        cfg.friends = cfg.friends.filter(f => f.toLowerCase() !== rest.toLowerCase());
+        const before = cfg.friends.length + cfg.friendIds.length;
+        const key = rest.toLowerCase();
+        cfg.friends = cfg.friends.filter(f => f.toLowerCase() !== key);
+        cfg.friendIds = cfg.friendIds.filter(f => !rest.includes(f.steamId) && `${f.name}`.toLowerCase() !== key);
         save();
-        return before === cfg.friends.length ? `👁️ ${rest} no estaba en los amigos.` : `👁️ ${rest} quitado de los amigos.`;
+        return before === cfg.friends.length + cfg.friendIds.length ?
+            `👁️ ${rest} no estaba en los amigos.` : `👁️ ${rest} quitado de los amigos.`;
     }
     if (['amigos', 'friends'].includes(a0)) {
-        return cfg.friends.length > 0 ? `👁️ Amigos (no avisan): ${cfg.friends.join(', ')}.` : '👁️ No hay amigos añadidos.';
+        const list = friendList(cfg);
+        return list ? `👁️ Amigos (no avisan): ${list}.` : '👁️ No hay amigos añadidos.';
     }
 
     /* Silence it for a while: !vigilar pausa 30m / 2h (1 hour by default) */
