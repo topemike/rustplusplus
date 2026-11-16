@@ -104,11 +104,16 @@ function classify(cam, players, names, now) {
     for (const p of players) {
         current.add(p.id);
         if (p.name) {
-            if (names.has(p.name.toLowerCase())) result.team.push(p);
+            if (names.has(p.name.toLowerCase())) {
+                result.team.push(p);
+                /* remembered: later looks may bring the same player without the name */
+                cam.entities[p.id] = { position: p.position, firstSeen: now, moving: true, friendly: true };
+            }
             else result.strangers.push(p);
             continue;
         }
         const known = cam.entities[p.id];
+        if (known && known.friendly) { result.team.push(p); continue; }
         if (!known) {
             cam.entities[p.id] = { position: p.position, firstSeen: now, moving: !!p.moved };
             if (p.moved) result.strangers.push(p);
@@ -178,24 +183,43 @@ async function tickGuild(client, guildId, now) {
             return;
         }
         cam.errorLogged = false;
-        const view = classify(cam, look.players, teamNames(rustplus, cfg), now);
+        const names = teamNames(rustplus, cfg);
+        const view = classify(cam, look.players, names, now);
         if (view.strangers.length === 0) return;
 
         /* One incident for all the cameras: someone walking past several cameras is one warning.
            Again only if more people are seen at once, or every REPEAT_MS while it goes on. */
         const inc = st.incident;
         const isNew = !inc || now - inc.lastSeen > QUIET_MS;
+        const lastAlert = isNew ? 0 : inc.lastAlert;
+        const maxCount = isNew ? 0 : inc.maxCount;
+        const more = view.strangers.length > maxCount;
+        const remind = now - lastAlert >= REPEAT_MS;
+        if (!isNew) inc.lastSeen = now;
+        if (!(isNew || more || remind)) return;
+
+        /* A longer look before warning: a clearer picture, and Rust+ does not send the names in
+           every frame, so a teammate that came without a name in the quick look is recognised now. */
+        const full = await CameraProbe.probe(rustplus, cameraId, 6000, true);
+        if (full.ok) {
+            const named = new Map(full.players.filter(p => p.name).map(p => [p.id, p.name]));
+            for (const p of view.strangers) if (!p.name && named.has(p.id)) p.name = named.get(p.id);
+            const teammates = view.strangers.filter(p => p.name && names.has(p.name.toLowerCase()));
+            if (teammates.length > 0) {
+                view.team.push(...teammates);
+                view.strangers = view.strangers.filter(p => !teammates.includes(p));
+                for (const p of teammates) {
+                    if (cam.entities[p.id]) cam.entities[p.id].friendly = true;
+                }
+            }
+            if (view.strangers.length === 0) return;   /* it was one of ours: no warning */
+        }
+
         if (isNew) st.incident = { lastSeen: now, lastAlert: 0, maxCount: 0 };
         const incident = st.incident;
         incident.lastSeen = now;
-        const more = view.strangers.length > incident.maxCount;
-        const remind = now - incident.lastAlert >= REPEAT_MS;
-        if (!(isNew || more || remind)) return;
-
         incident.lastAlert = now;
         incident.maxCount = Math.max(incident.maxCount, view.strangers.length);
-        /* A clearer picture for the warning */
-        const full = await CameraProbe.probe(rustplus, cameraId, 6000, true);
         await sendAlert(client, guildId, rustplus, cameraId, view, full.ok ? full.image : null, teamOnline(rustplus) === 0);
     }
     catch (e) {
