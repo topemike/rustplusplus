@@ -52,8 +52,17 @@ module.exports = {
         /* Reset map markers, timers & arrays */
         if (rustplus.mapMarkers) rustplus.mapMarkers.reset();
 
-        /* Stop all custom timers */
-        for (const [id, timer] of Object.entries(rustplus.timers)) timer.timer.stop();
+        /* Stop the custom timers, keeping { message, endsAt } so the next connection to this server
+           re-arms them (DiscordBot.createRustplusInstance) */
+        const savedTimers = typeof rustplus.exportCustomTimers === 'function' ? rustplus.exportCustomTimers() : [];
+        for (const [id, timer] of Object.entries(rustplus.timers || {})) {
+            try { timer.timer.stop(); } catch (e) { /* already stopped */ }
+        }
+        rustplus.timers = new Object();
+        if (!rustplus.isDeleted && savedTimers.length > 0) {
+            if (!client.pendingCustomTimers) client.pendingCustomTimers = new Object();
+            client.pendingCustomTimers[guildId] = { serverId: serverId, timers: savedTimers };
+        }
 
         if (rustplus.isDeleted) return;
         /* Another connection already replaced this one: nothing to reconnect */
@@ -83,7 +92,8 @@ module.exports = {
 
             client.rustplusReconnectTimers[guildId] = setTimeout(
                 client.createRustplusInstance.bind(client),
-                Config.general.reconnectIntervalMs,
+                /* Slower when the relay refused the token / there is no valid token */
+                rustplus.reconnectDelayMs || Config.general.reconnectIntervalMs,
                 guildId,
                 rustplus.server,
                 rustplus.port,

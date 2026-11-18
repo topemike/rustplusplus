@@ -22,6 +22,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const Info = require('../structures/Info');
 const Map = require('../structures/Map');
 const PollingHandler = require('../handlers/pollingHandler.js');
+const RustRelay = require('../util/rustRelay.js');
 const ServerLifecycle = require('../util/serverLifecycle.js');
 
 module.exports = {
@@ -68,19 +69,35 @@ module.exports = {
             return;
         }
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'rustplusOperational'));
+        /* The connection works: a later token problem warns again */
+        RustRelay.clearTokenWarning(client, guildId, rustplus.playerId);
+        rustplus.reconnectDelayMs = null;
 
-        const info = await rustplus.getInfoAsync();
-        if (await rustplus.isResponseValid(info)) rustplus.info = new Info(info.info)
+        try {
+            const info = await rustplus.getInfoAsync();
+            if (await rustplus.isResponseValid(info)) rustplus.info = new Info(info.info);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Connected, info: ${e}`, 'error');
+        }
 
         let wipeDetected = false;
-        if (client.rustplusMaps.hasOwnProperty(guildId)) {
-            if (client.isJpgImageChanged(guildId, map.map)) {
-                wipeDetected = true;
-                rustplus.map = new Map(map.map, rustplus);
+        try {
+            if (client.rustplusMaps.hasOwnProperty(guildId)) {
+                if (client.isJpgImageChanged(guildId, map.map)) {
+                    wipeDetected = true;
+                    rustplus.map = new Map(map.map, rustplus);
 
-                await rustplus.map.writeMap(false, true);
-                await DiscordMessages.sendServerWipeDetectedMessage(guildId, serverId);
-                await DiscordMessages.sendInformationMapMessage(guildId);
+                    await rustplus.map.writeMap(false, true);
+                    await DiscordMessages.sendServerWipeDetectedMessage(guildId, serverId);
+                    await DiscordMessages.sendInformationMapMessage(guildId);
+                }
+                else {
+                    rustplus.map = new Map(map.map, rustplus);
+
+                    await rustplus.map.writeMap(false, true);
+                    await DiscordMessages.sendInformationMapMessage(guildId);
+                }
             }
             else {
                 rustplus.map = new Map(map.map, rustplus);
@@ -89,11 +106,8 @@ module.exports = {
                 await DiscordMessages.sendInformationMapMessage(guildId);
             }
         }
-        else {
-            rustplus.map = new Map(map.map, rustplus);
-
-            await rustplus.map.writeMap(false, true);
-            await DiscordMessages.sendInformationMapMessage(guildId);
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Connected, map: ${e}`, 'error');
         }
 
         if (client.rustplusReconnecting[guildId]) {
@@ -104,18 +118,18 @@ module.exports = {
                 client.rustplusReconnectTimers[guildId] = null;
             }
 
-            await DiscordMessages.sendServerChangeStateMessage(guildId, serverId, 0);
+            await optional(client, 'state message', () => DiscordMessages.sendServerChangeStateMessage(guildId, serverId, 0));
         }
 
-        await DiscordMessages.sendServerMessage(guildId, serverId, null);
+        await optional(client, 'server message', () => DiscordMessages.sendServerMessage(guildId, serverId, null));
 
-        /* Setup Smart Devices */
-        await require('../discordTools/SetupSwitches')(client, rustplus);
-        await require('../discordTools/SetupSwitchGroups')(client, rustplus);
-        await require('../discordTools/SetupAlarms')(client, rustplus);
-        await require('../discordTools/SetupStorageMonitors')(client, rustplus);
+        /* Setup Smart Devices: one broken device / channel must not abort the connection */
+        for (const setup of ['SetupSwitches', 'SetupSwitchGroups', 'SetupAlarms', 'SetupStorageMonitors']) {
+            if (rustplus.stopIfReplaced()) return;
+            await optional(client, setup, () => require(`../discordTools/${setup}`)(client, rustplus));
+        }
         rustplus.isNewConnection = false;
-        rustplus.loadMarkers();
+        await optional(client, 'markers', () => rustplus.loadMarkers());
 
         /* After a wipe, offer to remove the devices of the previous wipe */
         try {
@@ -150,12 +164,29 @@ module.exports = {
             client.log(client.intlGet(null, 'errorCap'), `Server change: ${e}`, 'error');
         }
 
-        await PollingHandler.pollingHandler(rustplus, client);
+        /* Operational only once the first poll produced team/time/info/map markers; if it did not,
+           pollingHandler retries it on every interval and marks it operational then */
+        rustplus.awaitingFirstData = true;
+        await optional(client, 'first poll', () => PollingHandler.pollingHandler(rustplus, client));
         if (rustplus.stopIfReplaced()) return;
+        if (rustplus.isDeleted) return;
+        clearInterval(rustplus.pollingTaskId);
         rustplus.pollingTaskId = setInterval(PollingHandler.pollingHandler, client.pollingIntervalMs, rustplus, client);
-        rustplus.isOperational = true;
-        rustplus.operationalSince = Date.now();
-
-        rustplus.updateLeaderRustPlusLiteInstance();
+        if (!rustplus.isOperational && !rustplus.markOperationalIfReady()) {
+            rustplus.log(client.intlGet(null, 'warningCap'),
+                'First poll incomplete (no team/time/info/map markers yet): retrying on the next interval.',
+                'warn');
+        }
     },
 };
+
+/* Runs an optional step of the connection; an error is logged and the connection goes on */
+async function optional(client, what, fn) {
+    try {
+        return await fn();
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Connected, ${what}: ${e && e.stack ? e.stack : e}`, 'error');
+        return undefined;
+    }
+}

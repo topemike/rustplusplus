@@ -1029,5 +1029,19 @@
     "proximityNoLocation": "No tiene ubicación guardada: ponte al lado y escribe {command} aquí",
     "proximityStatus": "Ubicación {location}. {details}",
     "smartSwitchCommandUsage": "Uso: {command} on | off | estado | aquí, y si quieres con tiempo: {command} on 2m",
-    "leaderNotConnected": "Ahora el bot no puede pasar el líder: el líder actual no está conectado a través del bot. Prueba en un minuto."
+    "leaderNotConnected": "Ahora el bot no puede pasar el líder: el líder actual no está conectado a través del bot. Prueba en un minuto.",
+    "relayTokenProblemTitle": "Token de Rust+ caducado / rechazado",
+    "relayTokenProblemDesc": "Token de Rust+ caducado / rechazado para el Steam ID {steamId} ({reason}): vuelve a ejecutar /credentials add con un rustplus_auth_token nuevo. El bot lo reintenta cada {minutes} min.",
+    "relayTokenReasonRefused": "el relay de Rust+ lo ha rechazado, HTTP {status}",
+    "relayTokenReasonExpired": "caducó {date}",
+    "relayTokenReasonMissing": "no hay ningún rustplus_auth_token registrado",
+    "credentialsInvalidSteamId": "{steamId} no es un Steam ID válido.",
+    "credentialsAuthTokenInvalid": "El token de autenticación de Rust+ no es válido.",
+    "credentialsAuthTokenExpired": "Este token de autenticación de Rust+ ya ha caducado ({date}). Consigue uno nuevo y vuelve a ejecutar /credentials add.",
+    "credentialsAuthTokenWrongSteamId": "El token de autenticación de Rust+ es de {tokenSteamId}, no de {steamId}.",
+    "leaderTransferFailed": "No se ha podido pasar el líder del equipo a {name}: {error}",
+    "healthAuthTokenExpireSoonTitle": "El token de Rust+ caduca en {time}",
+    "healthAuthTokenExpireSoonDesc": "El token de autenticación de Rust+ del Steam ID {steamId} caduca {date}. Después el bot no podrá conectarse a través del relay de Rust+: vuelve a ejecutar /credentials add con un rustplus_auth_token nuevo.",
+    "healthAuthTokenExpiredTitle": "Token de Rust+ caducado",
+    "healthAuthTokenExpiredDesc": "El token de autenticación de Rust+ del Steam ID {steamId} caducó {date}. El bot no puede conectarse a través del relay de Rust+: vuelve a ejecutar /credentials add con un rustplus_auth_token nuevo."
 }

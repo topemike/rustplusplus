@@ -34,14 +34,34 @@ class RustPlusLite extends RustPlusLib {
         this.rustplus = rustplus;
 
         this.isActive = true;
+        this.reconnectDelayMs = null;
 
         this.loadRustPlusLiteEvents();
     }
 
     /* Same as RustPlus.connect(): relay when possible, legacy direct connection otherwise. */
     connect() {
-        const relay = RustRelay.resolve(this.guildId, this.server, this.port, this.playerId);
-        if (!relay) return super.connect();
+        const detail = RustRelay.resolveDetailed(this.guildId, this.server, this.port, this.playerId);
+        const relay = detail.relay;
+        this.reconnectDelayMs = null;
+        if (!relay) {
+            if (`${this.server}` === 'relay' || (detail.reason === 'noToken' && detail.relayServerId)) {
+                /* No direct connection to relay-only servers: no token, nothing to retry until
+                   /credentials add (which updates the leader connection again) */
+                this.isActive = false;
+                this.log(Client.client.intlGet(null, 'warningCap'),
+                    `Rust+ relay: no rustplus_auth_token for ${this.playerId} - leader connection not started.`,
+                    'warn');
+                RustRelay.warnTokenProblem(Client.client, this.guildId, this.playerId, 'noToken', {});
+                return;
+            }
+            return super.connect();
+        }
+        if (detail.reason === 'expired') {
+            this.reconnectDelayMs = RustRelay.SLOW_RETRY_MS;
+            RustRelay.warnTokenProblem(Client.client, this.guildId, this.playerId, 'expired',
+                { expiresAt: relay.expiresAt });
+        }
         RustRelay.connect(this, relay);
     }
 
@@ -123,6 +143,7 @@ async function rustPlusLiteConnectedEvent(rustplusLite) {
     }
     rustplusLite.log(Client.client.intlGet(null, 'connectedCap'),
         Client.client.intlGet(null, 'rustplusOperational'));
+    RustRelay.clearTokenWarning(Client.client, rustplusLite.guildId, rustplusLite.playerId);
 }
 
 async function rustPlusLiteConnectingEvent(rustplusLite) {
@@ -146,12 +167,22 @@ async function rustPlusLiteDisconnectedEvent(rustplusLite) {
 
         Client.client.rustplusLiteReconnectTimers[rustplusLite.guildId] = setTimeout(
             rustplusLite.rustplus.updateLeaderRustPlusLiteInstance.bind(rustplusLite.rustplus),
-            Config.general.reconnectIntervalMs);
+            rustplusLite.reconnectDelayMs || Config.general.reconnectIntervalMs);
     }
 }
 
 async function rustPlusLiteErrorEvent(rustplusLite, error) {
     rustplusLite.log(Client.client.intlGet(null, 'errorCap'), error, 'error');
+
+    /* Relay refused the token: one warning and slow retries instead of every few seconds */
+    const status = RustRelay.refusalStatus(error);
+    if (status !== null) {
+        rustplusLite.reconnectDelayMs = RustRelay.SLOW_RETRY_MS;
+        const detail = RustRelay.resolveDetailed(rustplusLite.guildId, rustplusLite.server, rustplusLite.port,
+            rustplusLite.playerId);
+        await RustRelay.warnTokenProblem(Client.client, rustplusLite.guildId, rustplusLite.playerId,
+            detail.reason === 'expired' ? 'expired' : 'refused', { status: status, expiresAt: detail.expiresAt });
+    }
 }
 
 module.exports = RustPlusLite;

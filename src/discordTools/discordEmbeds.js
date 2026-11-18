@@ -319,7 +319,9 @@ module.exports = {
 
         let description = `**ID** \`${entityId}\``;
 
-        if (!rustplus) {
+        /* Not connected to the server of this monitor (or no reading of it yet) */
+        if (!rustplus || rustplus.serverId !== serverId || !rustplus.storageMonitors ||
+            !rustplus.storageMonitors[entityId]) {
             return module.exports.getEmbed({
                 title: `${entity.name}${grid}`,
                 color: Constants.COLOR_DEFAULT,

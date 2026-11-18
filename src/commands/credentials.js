@@ -93,19 +93,19 @@ module.exports = {
 
         switch (interaction.options.getSubcommand()) {
             case 'add': {
-                addCredentials(client, interaction, verifyId);
+                await addCredentials(client, interaction, verifyId);
             } break;
 
             case 'remove': {
-                removeCredentials(client, interaction, verifyId);
+                await removeCredentials(client, interaction, verifyId);
             } break;
 
             case 'show': {
-                showCredentials(client, interaction, verifyId);
+                await showCredentials(client, interaction, verifyId);
             } break;
 
             case 'set_hoster': {
-                setHosterCredentials(client, interaction, verifyId);
+                await setHosterCredentials(client, interaction, verifyId);
             } break;
 
             default: {
@@ -118,12 +118,22 @@ async function addCredentials(client, interaction, verifyId) {
     const guildId = interaction.guildId;
     const credentials = InstanceUtils.readCredentialsFile(guildId);
     const steamId = interaction.options.getString('steam_id');
-    const isHoster = interaction.options.getBoolean('host') || Object.keys(credentials).length === 1;
+    if (!isSteamIdArgument(steamId)) {
+        const str = client.intlGet(guildId, 'credentialsInvalidSteamId', { steamId: `${steamId}` });
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+        client.log(client.intlGet(null, 'warningCap'), str);
+        return;
+    }
 
-    if (Object.keys(credentials) !== 1 && isHoster) {
+    /* The very first credentials (the file only has the "hoster" key) become the hoster and anyone
+       may add them; replacing / choosing the hoster when there are credentials: administrators only */
+    const isFirstCredentials = Object.keys(credentials).filter(k => k !== 'hoster').length === 0;
+    const isHoster = interaction.options.getBoolean('host') || isFirstCredentials;
+
+    if (!isFirstCredentials && isHoster) {
         if (!client.isAdministrator(interaction)  /* hoster and others' credentials: administrators only */) {
             const str = client.intlGet(interaction.guildId, 'missingPermission');
-            client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+            await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
             client.log(client.intlGet(null, 'warningCap'), str);
             return;
         }
@@ -134,10 +144,16 @@ async function addCredentials(client, interaction, verifyId) {
     if (rawAuthToken) {
         authToken = RustRelay.normaliseAuthToken(rawAuthToken);
         const payload = authToken ? RustRelay.parseAuthToken(authToken) : null;
-        if (!payload || (payload.steamId && `${payload.steamId}` !== steamId)) {
-            const str = payload ?
-                `Rust+ auth token belongs to ${payload.steamId}, not ${steamId}.` :
-                'Invalid Rust+ auth token.';
+        const expired = payload && payload.expiresAt && payload.expiresAt * 1000 < Date.now();
+        if (!payload || (payload.steamId && `${payload.steamId}` !== steamId) || expired) {
+            const str = !payload ? client.intlGet(guildId, 'credentialsAuthTokenInvalid') :
+                expired ? client.intlGet(guildId, 'credentialsAuthTokenExpired', {
+                    date: `<t:${payload.expiresAt}:F>`
+                }) :
+                client.intlGet(guildId, 'credentialsAuthTokenWrongSteamId', {
+                    tokenSteamId: `${payload.steamId}`,
+                    steamId: steamId
+                });
             await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
             client.log(client.intlGet(null, 'warningCap'), str);
             return;
@@ -185,7 +201,7 @@ async function addCredentials(client, interaction, verifyId) {
         require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), steamId);
 
         const rustplus = client.rustplusInstances[guildId];
-        if (rustplus && rustplus.team.leaderSteamId === steamId) {
+        if (rustplus && rustplus.team?.leaderSteamId === steamId) {
             rustplus.updateLeaderRustPlusLiteInstance();
         }
     }
@@ -195,8 +211,8 @@ async function addCredentials(client, interaction, verifyId) {
         value: `add, ${steamId}, ` +
             `${credentials[steamId].discord_user_id}, ` +
             `${hoster}, ` +
-            `${credentials[steamId].gcm.android_id}, ` +
-            `${credentials[steamId].gcm.security_token}, ` +
+            `android_id=${redact(credentials[steamId].gcm.android_id)}, ` +
+            `security_token=${redact(credentials[steamId].gcm.security_token)}, ` +
             `${credentials[steamId].issued_date}, ` +
             `${credentials[steamId].expire_date}, ` +
             `authToken=${authToken ? 'new' : (keptAuthToken ? 'kept' : 'none')}`
@@ -212,10 +228,17 @@ async function removeCredentials(client, interaction, verifyId) {
     const credentials = InstanceUtils.readCredentialsFile(guildId);
     let steamId = interaction.options.getString('steam_id');
 
+    if (steamId && !isSteamIdArgument(steamId)) {
+        const str = client.intlGet(guildId, 'credentialsInvalidSteamId', { steamId: `${steamId}` });
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+        client.log(client.intlGet(null, 'warningCap'), str);
+        return;
+    }
+
     if (steamId && (steamId in credentials) && credentials[steamId].discord_user_id !== interaction.member.user.id) {
         if (!client.isAdministrator(interaction)  /* hoster and others' credentials: administrators only */) {
             const str = client.intlGet(interaction.guildId, 'missingPermission');
-            client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+            await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
             client.log(client.intlGet(null, 'warningCap'), str);
             return;
         }
@@ -223,7 +246,7 @@ async function removeCredentials(client, interaction, verifyId) {
 
     if (!steamId) {
         for (const credential of Object.keys(credentials)) {
-            if (credential === 'hoster') continue;
+            if (credential === 'hoster' || !credentials[credential]) continue;
 
             if (credentials[credential].discord_user_id === interaction.member.user.id) {
                 steamId = credential;
@@ -232,7 +255,7 @@ async function removeCredentials(client, interaction, verifyId) {
         }
     }
 
-    if (!(steamId in credentials)) {
+    if (!steamId || !isSteamIdArgument(steamId) || !(steamId in credentials) || !credentials[steamId]) {
         const str = client.intlGet(guildId, 'credentialsDoNotExist', {
             steamId: steamId ? steamId : client.intlGet(guildId, 'unknown')
         });
@@ -249,10 +272,10 @@ async function removeCredentials(client, interaction, verifyId) {
         credentials.hoster = null;
     }
     else {
-        if (client.fcmListenersLite[guildId][steamId]) {
+        if (client.fcmListenersLite[guildId] && client.fcmListenersLite[guildId][steamId]) {
             client.fcmListenersLite[guildId][steamId].destroy();
         }
-        delete client.fcmListenersLite[guildId][steamId];
+        if (client.fcmListenersLite[guildId]) delete client.fcmListenersLite[guildId][steamId];
     }
 
     delete credentials[steamId];
@@ -284,17 +307,17 @@ async function setHosterCredentials(client, interaction, verifyId) {
 
     if (!client.isAdministrator(interaction)  /* hoster and others' credentials: administrators only */) {
         const str = client.intlGet(interaction.guildId, 'missingPermission');
-        client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
         client.log(client.intlGet(null, 'warningCap'), str);
         return;
     }
 
     if (!steamId) {
-        steamId = Object.keys(credentials).find(e => credentials[e] &&
+        steamId = Object.keys(credentials).find(e => e !== 'hoster' && credentials[e] &&
             credentials[e].discord_user_id === interaction.member.user.id);
     }
 
-    if (!(steamId in credentials)) {
+    if (!steamId || !isSteamIdArgument(steamId) || !(steamId in credentials) || !credentials[steamId]) {
         const str = client.intlGet(guildId, 'credentialsDoNotExist', {
             steamId: steamId ? steamId : client.intlGet(guildId, 'unknown')
         });
@@ -331,4 +354,17 @@ async function setHosterCredentials(client, interaction, verifyId) {
     const str = client.intlGet(guildId, 'credentialsSetHosterSuccessfully', { steamId: steamId });
     await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(0, str));
     client.log(client.intlGet(null, 'infoCap'), str);
+}
+
+/* A Steam ID given as argument: never the "hoster" key of the credentials file */
+function isSteamIdArgument(steamId) {
+    return typeof steamId === 'string' && steamId.trim() !== '' && steamId !== 'hoster' &&
+        !['__proto__', 'constructor', 'prototype'].includes(steamId);
+}
+
+/* Secrets in the logs: only the last 4 characters */
+function redact(value) {
+    if (value === undefined || value === null) return 'none';
+    const str = `${value}`;
+    return str.length <= 4 ? '****' : `****${str.slice(-4)}`;
 }

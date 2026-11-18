@@ -19,6 +19,7 @@
 */
 
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const RustRelay = require('../util/rustRelay.js');
 
 module.exports = {
     name: 'error',
@@ -26,6 +27,19 @@ module.exports = {
         if (!rustplus.isServerAvailable()) return rustplus.deleteThisRustplusInstance();
 
         rustplus.log(client.intlGet(null, 'errorCap'), err, 'error');
+        if (!err) return;
+
+        /* The relay refused the Rust+ auth token (expired / revoked): one warning, slow retries */
+        const status = RustRelay.refusalStatus(err);
+        if (status !== null) {
+            rustplus.reconnectDelayMs = RustRelay.SLOW_RETRY_MS;
+            const detail = RustRelay.resolveDetailed(rustplus.guildId, rustplus.server, rustplus.port,
+                rustplus.playerId);
+            await RustRelay.warnTokenProblem(client, rustplus.guildId, rustplus.playerId,
+                detail.reason === 'expired' ? 'expired' : 'refused',
+                { status: status, expiresAt: detail.expiresAt });
+            return;
+        }
 
         switch (err.code) {
             case 'ETIMEDOUT': {
@@ -70,7 +84,7 @@ async function errorConnRefused(rustplus, client, err) {
 }
 
 function errorOther(rustplus, client, err) {
-    if (err.toString() === 'Error: WebSocket was closed before the connection was established') {
+    if (`${err}` === 'Error: WebSocket was closed before the connection was established') {
         rustplus.log(client.intlGet(null, 'errorCap'),
             client.intlGet(null, 'websocketClosedBeforeConnection'), 'error');
     }
