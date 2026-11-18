@@ -71,7 +71,9 @@ module.exports = {
         const alarms = instance.serverList[serverId].alarms;
         const prefix = rustplus.generalSettings.prefix;
 
-        const entityId = Object.keys(alarms).find(e => command === `${prefix}${alarms[e].command}`);
+        /* Upper or lower case does not matter: "!Alarm" = "!alarm" */
+        const lower = command.trim().toLowerCase();
+        const entityId = Object.keys(alarms).find(e => lower === `${prefix}${alarms[e].command}`.toLowerCase());
         if (!entityId) return false;
 
         if (alarms[entityId].lastTrigger === null) {

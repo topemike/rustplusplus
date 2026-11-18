@@ -122,25 +122,31 @@ async function probe(rustplus, cameraId, listenMs = LISTEN_MS, withImage = true)
 
 const busy = new Set();
 
-/* Short text for Discord / the game */
-function describe(cameraId, r) {
+/* Short text for Discord / the game. t(id, variables) gives the text of the guild language. */
+function describe(cameraId, r, t) {
+    if (typeof t !== 'function') {
+        const en = require('../languages/en.json');
+        t = (id, v = {}) => `${en[id]}`.replace(/\{(\w+)\}/g, (all, k) => (k in v ? `${v[k]}` : all));
+    }
     if (!r.ok) {
-        const why = r.error === 'busy' ? 'ya hay una prueba de cámara en marcha, espera unos segundos' :
-            r.error === 'tokens' ? 'Rust+ está ocupado, prueba en unos segundos' :
-            `Rust+ contestó: ${r.error}` + (/not_found|no_info/i.test(r.error) ? ' (¿el código es exacto, mayúsculas incluidas, y la cámara tiene corriente?)' : '');
-        return `📷 ${cameraId}: no se pudo ver la cámara — ${why}.`;
+        const why = r.error === 'busy' ? t('camProbeBusy') :
+            r.error === 'tokens' ? t('camProbeTokens') :
+            t('camProbeAnswered', { error: r.error }) + (/not_found|no_info/i.test(r.error) ? t('camProbeCheckCode') : '');
+        return t('camProbeFailed', { camera: cameraId, why: why });
     }
     const i = r.info;
-    const type = (i.controlFlags & Camera.ControlFlags.MOUSE) ? 'PTZ (se puede girar)' : 'fija';
+    const type = (i.controlFlags & Camera.ControlFlags.MOUSE) ? t('camProbePtz') : t('camProbeFixed');
     const lines = [
-        `📷 ${cameraId}: cámara ${type}.`,
-        `Ve hasta unos ${Math.round(i.farPlane)} m` + (r.fov ? `, ángulo vertical ${Math.round(r.fov)}°` : '') +
-            `, imagen ${i.width}×${i.height}. Datos recibidos: ${r.frames}.`,
+        t('camProbeType', { camera: cameraId, type: type }),
+        t('camProbeRange', {
+            meters: Math.round(i.farPlane), fov: r.fov ? t('camProbeFov', { fov: Math.round(r.fov) }) : '',
+            width: i.width, height: i.height, frames: r.frames
+        }),
         r.players.length > 0 ?
-            `👤 Jugadores a la vista: ${r.players.map(p => `${p.name || `#${p.id}`} (${p.distance} m)`).join(', ')}.` :
-            '👤 Ningún jugador a la vista ahora mismo.'
+            t('camProbePlayers', { players: r.players.map(p => `${p.name || `#${p.id}`} (${p.distance} m)`).join(', ') }) :
+            t('camProbeNoPlayers')
     ];
-    if (r.frames === 0) lines.push('⚠️ La cámara no mandó imagen: puede que el server tenga limitadas las cámaras en Rust+.');
+    if (r.frames === 0) lines.push(t('camProbeNoImage'));
     return lines.join('\n');
 }
 

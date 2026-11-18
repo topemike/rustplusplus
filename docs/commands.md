@@ -346,14 +346,20 @@ Subcommand | Options | Description | Required
 In-Game Command | Description
 --------------- | -----------
 [**afk**](commands.md#afk) | Get the currently afk players in your team.
-[**alive**](commands.md#alive) | Get the player with the longest time alive.
+[**alive**](commands.md#alive) | Get the player (alive and online) with the longest time alive.
+[**base**](commands.md#base) | Mark the base (Patrol Helicopter near-base alerts), see it or clear it.
+[**bradley**](commands.md#bradley) | Time since the Bradley APC was destroyed and when it should be back.
+[**cam**](commands.md#cam) | Test a CCTV/PTZ camera: what it sees and a picture in Discord.
 [**cargo**](commands.md#cargo) | Get information about CargoShip (Location, time till enters egress stage, time since last on map).
 [**chinook**](commands.md#chinook) | Get information about Chinook 47 (Location, time since last on map).
 [**connection/connections**](commands.md#connectionconnections) | Get recent connection events.
 [**craft**](commands.md#craft-ingame) | Display the cost to craft an item.
+[**crate**](commands.md#crate) | Locked crates on the map (not the oil rigs).
 [**death/deaths**](commands.md#deathdeaths) | Get recent death events.
 [**decay**](commands.md#decay-ingame) | Display the decay time of an item.
+[**deepsea**](commands.md#deepsea) | Deep Sea timer (mark it open/closed).
 [**events**](commands.md#events) | Get recent events.
+[**find/buscar**](commands.md#findbuscar) | Who sells an item in the vending machines, cheapest first.
 [**heli**](commands.md#heli) | Get information about Patrol Helicopter (Location, time since last downed, time since last on map).
 [**large**](commands.md#large) | Get information about Large Oil Rig (Time till crate unlocks, time since last trigger).
 [**leader**](commands.md#leader-1) | Give/Take the Team Leadership.
@@ -381,9 +387,17 @@ In-Game Command | Description
 [**upkeep**](commands.md#upkeep) | Get the upkeep time of all connected tool cupboard monitors.
 [**uptime**](commands.md#uptime-ingame) | Display uptime of the bot and server.
 [**vendor**](commands.md#vendor) | Get information about the Traveling Vendor (Current Location, Time since last vendor)
+[**watch/vigilar**](commands.md#watchvigilar) | Camera watch: warn in Discord when someone not of the team is seen on the base cameras.
 [**wipe**](commands.md#wipe) | Get the time since it was wiped.
 
 
+> **Notes for all In-Game commands**
+> - Upper/lower case does not matter (`!CRAFT`, `!Heli`), and in Spanish the accents are optional (`!caida` = `!caída`, `!lider` = `!líder`, `!conexion` = `!conexión`, `!pequena` = `!pequeña`).
+> - A command is recognised only as the whole first word: `!craft` or `!craft rifle`, but `!crafter` can be a Smart Switch. Smart Switches, groups and alarms can not be named like a command.
+> - Running a command without the needed arguments (`!craft`, `!note`, `!timer`, `!send`...) answers how to use it.
+> - Aliases (`/alias`) are only replaced as the whole first word(s) of the command, not inside the text.
+> - While the bot is still loading the server data after connecting, commands answer that it is still loading.
+> - Since the Rust update of August 2026 Facepunch no longer sends the Cargo Ship, the Patrol Helicopter, vending machines, the Traveling Vendor and explosions to Rust+. When none of them has been received for 2 hours after connecting, `!cargo`, `!heli`, `!vendor`, `!bradley`, `!market search`, `!find` and `!events cargo/heli` (and the #information channel) say so instead of answering as if nothing was happening. If Facepunch sends them again, everything works as before.
 
 ## **afk**
 
@@ -400,6 +414,26 @@ In-Game Command | Description
 <br>Command: `!alive Alle`
 
 ![In-Game Command alive Image](images/ingame_commands/alive_ingame.png)
+
+
+## **base**
+
+> **Mark your base** at your position (used by the Patrol Helicopter near-base alerts).
+<br>Command: `!base` - Mark the base where you are standing
+<br>Command: `!base info` - Where the base is marked (also works from Discord)
+<br>Command: `!base clear` - Remove the base mark
+
+
+## **bradley**
+
+> **Time since the Bradley APC was destroyed and when it should be back** (detected from explosion markers at Launch Site).
+<br>Command: `!bradley`
+
+
+## **cam**
+
+> **Test a CCTV / PTZ camera** for a few seconds: camera type, how far it sees, players in view. In-game you get the summary and the picture is posted in the Discord team chat channel. Also `!camara` / `!cámara`.
+<br>Command: `!cam <camera code>`
 
 
 ## **cargo**
@@ -437,6 +471,12 @@ In-Game Command | Description
 ![In-Game Command craft Image](images/ingame_commands/craft_ingame.png)
 
 
+## **crate**
+
+> **Locked crates on the map** (Chinook drops and others, not the oil rigs) and how long they have been there.
+<br>Command: `!crate`
+
+
 ## **death/deaths**
 
 > **Get recent death events of the team or from a specific teammate.**
@@ -457,15 +497,29 @@ In-Game Command | Description
 ![In-Game Command decay Image](images/ingame_commands/decay_ingame.png)
 
 
+## **deepsea**
+
+> **Deep Sea timer.** Rust+ does not tell when the Deep Sea opens: mark it when it opens or closes and the bot keeps the time.
+<br>Command: `!deepsea` - Status
+<br>Command: `!deepsea open` / `!deepsea closed` - Mark it now (add the minutes if you mark it late: `!deepsea open 20`)
+
+
 ## **events**
 
-> **Get recent In-Game events.** Available events are cargo, heli, small, large, chinook
+> **Get recent In-Game events.** Available events are cargo, heli, small, large, chinook. The number goes from 1 to 10 (the last 10 events are kept).
 <br>Command: `!events` - Get last 5 events
 <br>Command: `!events 3` - Get last 3 events
 <br>Command: `!events cargo` - Get last 5 events from cargo
 <br>Command: `!events cargo 2` - Get last 2 events from cargo
 
 ![In-Game Command events Image](images/ingame_commands/events_ingame.png)
+
+
+## **find/buscar**
+
+> **Who sells an item in the vending machines**, cheapest first (part of the name is enough).
+<br>Command: `!find <item>`
+<br>Command: `!buscar <item>`
 
 
 ## **heli**
@@ -503,7 +557,7 @@ Subcommand | Description | Required
 Subcommand | Description | Required
 ---------- | ----------- | --------
 `add` | Add a custom marker (`!marker add <name>`). | `False`
-`remove` | Remove a custom marker (`!marker remove <id>`). | `False`
+`remove` | Remove a custom marker (`!marker remove <name>`). | `False`
 `<marker_name>` | Calling with the name of the marker will let you navigate to that marker (`!marker <name>`). | `False`
 
 ![In-Game Command marker Image](images/ingame_commands/marker_ingame.png)
@@ -652,8 +706,10 @@ Subcommand | Description | Required
 
 ## **timer**
 
-> **Set custom timers that will notify whenever the timer have expired.** To list all registered timers run `!timers`.
-<br>`The argument <time> is used to set time in the format: 2h15m or 15m10s etc... (not space between d/h/m/s).`
+> **Set custom timers that will notify whenever the timer have expired** (in game and in Discord). To list all registered timers run `!timers`.
+<br>`The argument <time> is used to set time in the format: 2h15m or 15m10s etc... (not space between d/h/m/s, upper case is fine). At most 24 days.`
+<br>Command: `!timer add 10m check the furnace`
+<br>Command: `!timer remove 0`
 
 Subcommand | Description | Required
 ---------- | ----------- | --------
@@ -722,6 +778,18 @@ Subcommand | Description | Required
 <br>Command: `!vendor`
 
 ![In-Game Command vendor Image](images/ingame_commands/vendor_ingame.png)
+
+
+## **watch/vigilar**
+
+> **Camera watch.** The bot looks at the base cameras by itself (only while the bot's account is not in the game) and warns in Discord when someone that is not of the team is seen (with @everyone when nobody of the team is online).
+<br>Command: `!watch` - Status
+<br>Command: `!watch <camera code>` - Add a camera
+<br>Command: `!watch remove <camera code>` - Remove a camera
+<br>Command: `!watch on` / `!watch off` - Enable / disable
+<br>Command: `!watch pause 30m` / `!watch resume` - Pause for a while (1h by default, max 24h)
+<br>Command: `!watch friend <steamid or name>` / `!watch unfriend <name>` / `!watch friends` - Allies that are not in the in-game team and must not trigger warnings
+<br>The same in Spanish: `!vigilar`, `quitar`, `pausa`, `seguir`, `amigo`, `quitaramigo`, `amigos`.
 
 
 ## **wipe**

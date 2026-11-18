@@ -826,14 +826,21 @@ module.exports = {
         const chinook47FieldName = Client.client.intlGet(guildId, 'chinook47');
         const travelingVendorFieldName = Client.client.intlGet(guildId, 'travelingVendor');
 
-        const cargoShipMessage = rustplus.getCommandCargo(true);
-        const patrolHelicopterMessage = rustplus.getCommandHeli(true);
-        const smallOilMessage = rustplus.getCommandSmall(true);
-        const largeOilMessage = rustplus.getCommandLarge(true);
-        const ch47Message = rustplus.getCommandChinook(true);
-        const travelingVendorMessage = rustplus.getCommandTravelingVendor(true);
-        const bradleyMessage = rustplus.getCommandBradley(true);
-        const crateMessage = rustplus.getCommandCrate(true);
+        /* One line per event. Events whose map markers Rust+ does not send any more (Cargo Ship, Patrol
+           Helicopter, Traveling Vendor, explosions for the Bradley APC) say so instead of "Not active". */
+        const asText = (value) => {
+            if (Array.isArray(value)) value = value.join(', ');
+            return (value === null || value === undefined || `${value}` === '') ?
+                Client.client.intlGet(guildId, 'notActive') : `${value}`;
+        };
+        const cargoShipMessage = asText(rustplus.getCommandCargo(true));
+        const patrolHelicopterMessage = asText(rustplus.getCommandHeli(true));
+        const smallOilMessage = asText(rustplus.getCommandSmall(true));
+        const largeOilMessage = asText(rustplus.getCommandLarge(true));
+        const ch47Message = asText(rustplus.getCommandChinook(true));
+        const travelingVendorMessage = asText(rustplus.getCommandTravelingVendor(true));
+        const bradleyMessage = asText(rustplus.getCommandBradley(true));
+        const crateMessage = asText(rustplus.getCommandCrate(true));
         const deepSeaServer = instance.serverList[rustplus.serverId];
         const deepSeaMessage = deepSeaServer && deepSeaServer.deepSea ?
             require('../handlers/deepSeaHandler.js').statusText(Client.client, guildId, deepSeaServer.deepSea,

@@ -76,9 +76,11 @@ module.exports = {
 function handleMessage(rustplus, message, trademarkString, maxLength) {
     if (typeof message !== 'string') return;
 
-    const strings = message.match(new RegExp(`.{1,${maxLength}}(\\s|$)`, 'g'));
+    /* Cut at spaces when possible; a long text without spaces is cut anyway (before, it was lost) */
+    const strings = message.match(new RegExp(`.{1,${maxLength}}(\\s|$)|.{1,${maxLength}}`, 'g')) || [];
 
     for (const str of strings) {
+        if (str.trim() === '') continue;
         rustplus.inGameChatQueue.push(`${trademarkString}${str}`);
     }
 }

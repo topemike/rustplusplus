@@ -290,10 +290,17 @@ module.exports = {
         const lower = command.toLowerCase();
         const syntaxes = [client.intlGet('en', 'commandSyntaxFind'), client.intlGet(guildId, 'commandSyntaxFind'),
             'find', 'buscar'];
-        const syntax = syntaxes.find(s => lower.startsWith(`${prefix}${s} `));
+        const syntax = syntaxes.find(s => lower === `${prefix}${s}` || lower.startsWith(`${prefix}${s} `));
         if (!syntax) return null;
 
-        const query = command.slice(`${prefix}${syntax} `.length).trim();
+        const query = command.slice(`${prefix}${syntax}`.length).trim();
+        if (query === '') {
+            return client.intlGet(guildId, 'usageItem', { cmd: `${prefix}${client.intlGet(guildId, 'commandSyntaxFind')}` });
+        }
+        if (rustplus.mapMarkers && typeof rustplus.mapMarkers.isTypeUnavailable === 'function' &&
+            rustplus.mapMarkers.isTypeUnavailable(rustplus.mapMarkers.types.VendingMachine)) {
+            return client.intlGet(guildId, 'rustPlusNoVendingMachines');
+        }
         const itemIds = MarketSearch.resolveQuery(client.items, query);
         if (itemIds.length === 0) return client.intlGet(guildId, 'noItemWithNameFound', { name: query });
 

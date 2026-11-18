@@ -18,96 +18,56 @@
 
 */
 
+/* Top level text commands ("!craft", "!heli"...): their syntax keys */
+const COMMAND_SYNTAX_KEYS = [
+    'commandSyntaxAfk', 'commandSyntaxAlive', 'commandSyntaxBase', 'commandSyntaxBradley', 'commandSyntaxCargo',
+    'commandSyntaxChinook', 'commandSyntaxConnection', 'commandSyntaxConnections', 'commandSyntaxCraft',
+    'commandSyntaxCrate', 'commandSyntaxDeath', 'commandSyntaxDeaths', 'commandSyntaxDecay', 'commandSyntaxDeepSea',
+    'commandSyntaxDespawn', 'commandSyntaxEvents', 'commandSyntaxFind', 'commandSyntaxHeli', 'commandSyntaxLarge',
+    'commandSyntaxLeader', 'commandSyntaxMarker', 'commandSyntaxMarkers', 'commandSyntaxMarket', 'commandSyntaxMute',
+    'commandSyntaxNote', 'commandSyntaxNotes', 'commandSyntaxOffline', 'commandSyntaxOnline', 'commandSyntaxPlayer',
+    'commandSyntaxPlayers', 'commandSyntaxPop', 'commandSyntaxProx', 'commandSyntaxRecycle', 'commandSyntaxResearch',
+    'commandSyntaxSend', 'commandSyntaxSmall', 'commandSyntaxStack', 'commandSyntaxSteamid', 'commandSyntaxTeam',
+    'commandSyntaxTime', 'commandSyntaxTimer', 'commandSyntaxTimers', 'commandSyntaxTranslateTo',
+    'commandSyntaxTranslateFromTo', 'commandSyntaxTTS', 'commandSyntaxUnmute', 'commandSyntaxUpkeep',
+    'commandSyntaxUptime', 'commandSyntaxWipe', 'commandSyntaxTravelingVendor'
+];
+
+/* Words after the command ("!marker add x", "!market search ..."): accents are optional there too */
+const SUBCOMMAND_SYNTAX_KEYS = [
+    'commandSyntaxAdd', 'commandSyntaxRemove', 'commandSyntaxSearch', 'commandSyntaxSubscribe',
+    'commandSyntaxUnsubscribe', 'commandSyntaxList', 'commandSyntaxLanguage', 'commandSyntaxStatus'
+];
+
+/* Built-in words that are not language keys (both languages are always understood) */
+const EXTRA_COMMAND_WORDS = ['base', 'bradley', 'crate', 'vendor', 'deepsea', 'find', 'buscar', 'cam', 'camara',
+    'cámara', 'watch', 'vigilar'];
+
+function plain(str) {
+    return `${str}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function escapeRegExp(str) {
+    return `${str}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 module.exports = {
+    COMMAND_SYNTAX_KEYS: COMMAND_SYNTAX_KEYS,
+
+    /* Lower case and without accents: "Caída" -> "caida" */
+    plain: plain,
+
     getListOfCommandKeywords: function (client, guildId) {
-        return [
-            client.intlGet(guildId, 'commandSyntaxAfk'),
-            client.intlGet(guildId, 'commandSyntaxAlive'),
-            client.intlGet(guildId, 'commandSyntaxCargo'),
-            client.intlGet(guildId, 'commandSyntaxChinook'),
-            client.intlGet(guildId, 'commandSyntaxConnection'),
-            client.intlGet(guildId, 'commandSyntaxConnections'),
-            client.intlGet(guildId, 'commandSyntaxCraft'),
-            client.intlGet(guildId, 'commandSyntaxDeath'),
-            client.intlGet(guildId, 'commandSyntaxDeaths'),
-            client.intlGet(guildId, 'commandSyntaxDecay'),
-            client.intlGet(guildId, 'commandSyntaxEvents'),
-            client.intlGet(guildId, 'commandSyntaxHeli'),
-            client.intlGet(guildId, 'commandSyntaxLarge'),
-            client.intlGet(guildId, 'commandSyntaxLeader'),
-            client.intlGet(guildId, 'commandSyntaxMarker'),
-            client.intlGet(guildId, 'commandSyntaxMarkers'),
-            client.intlGet(guildId, 'commandSyntaxMarket'),
-            client.intlGet(guildId, 'commandSyntaxMute'),
-            client.intlGet(guildId, 'commandSyntaxNote'),
-            client.intlGet(guildId, 'commandSyntaxNotes'),
-            client.intlGet(guildId, 'commandSyntaxOffline'),
-            client.intlGet(guildId, 'commandSyntaxOnline'),
-            client.intlGet(guildId, 'commandSyntaxPlayer'),
-            client.intlGet(guildId, 'commandSyntaxPlayers'),
-            client.intlGet(guildId, 'commandSyntaxPop'),
-            client.intlGet(guildId, 'commandSyntaxProx'),
-            client.intlGet(guildId, 'commandSyntaxRecycle'),
-            client.intlGet(guildId, 'commandSyntaxResearch'),
-            client.intlGet(guildId, 'commandSyntaxSend'),
-            client.intlGet(guildId, 'commandSyntaxSmall'),
-            client.intlGet(guildId, 'commandSyntaxStack'),
-            client.intlGet(guildId, 'commandSyntaxSteamid'),
-            client.intlGet(guildId, 'commandSyntaxTeam'),
-            client.intlGet(guildId, 'commandSyntaxTime'),
-            client.intlGet(guildId, 'commandSyntaxTimer'),
-            client.intlGet(guildId, 'commandSyntaxTimers'),
-            client.intlGet(guildId, 'commandSyntaxTranslateTo'),
-            client.intlGet(guildId, 'commandSyntaxTranslateFromTo'),
-            client.intlGet(guildId, 'commandSyntaxTTS'),
-            client.intlGet(guildId, 'commandSyntaxUnmute'),
-            client.intlGet(guildId, 'commandSyntaxUpkeep'),
-            client.intlGet(guildId, 'commandSyntaxUptime'),
-            client.intlGet(guildId, 'commandSyntaxWipe'),
-            client.intlGet('en', 'commandSyntaxAfk'),
-            client.intlGet('en', 'commandSyntaxAlive'),
-            client.intlGet('en', 'commandSyntaxCargo'),
-            client.intlGet('en', 'commandSyntaxChinook'),
-            client.intlGet('en', 'commandSyntaxConnection'),
-            client.intlGet('en', 'commandSyntaxConnections'),
-            client.intlGet('en', 'commandSyntaxCraft'),
-            client.intlGet('en', 'commandSyntaxDeath'),
-            client.intlGet('en', 'commandSyntaxDeaths'),
-            client.intlGet('en', 'commandSyntaxDecay'),
-            client.intlGet('en', 'commandSyntaxEvents'),
-            client.intlGet('en', 'commandSyntaxHeli'),
-            client.intlGet('en', 'commandSyntaxLarge'),
-            client.intlGet('en', 'commandSyntaxLeader'),
-            client.intlGet('en', 'commandSyntaxMarker'),
-            client.intlGet('en', 'commandSyntaxMarkers'),
-            client.intlGet('en', 'commandSyntaxMarket'),
-            client.intlGet('en', 'commandSyntaxMute'),
-            client.intlGet('en', 'commandSyntaxNote'),
-            client.intlGet('en', 'commandSyntaxNotes'),
-            client.intlGet('en', 'commandSyntaxOffline'),
-            client.intlGet('en', 'commandSyntaxOnline'),
-            client.intlGet('en', 'commandSyntaxPlayer'),
-            client.intlGet('en', 'commandSyntaxPlayers'),
-            client.intlGet('en', 'commandSyntaxPop'),
-            client.intlGet('en', 'commandSyntaxProx'),
-            client.intlGet('en', 'commandSyntaxRecycle'),
-            client.intlGet('en', 'commandSyntaxResearch'),
-            client.intlGet('en', 'commandSyntaxSend'),
-            client.intlGet('en', 'commandSyntaxSmall'),
-            client.intlGet('en', 'commandSyntaxStack'),
-            client.intlGet('en', 'commandSyntaxSteamid'),
-            client.intlGet('en', 'commandSyntaxTeam'),
-            client.intlGet('en', 'commandSyntaxTime'),
-            client.intlGet('en', 'commandSyntaxTimer'),
-            client.intlGet('en', 'commandSyntaxTimers'),
-            client.intlGet('en', 'commandSyntaxTranslateTo'),
-            client.intlGet('en', 'commandSyntaxTranslateFromTo'),
-            client.intlGet('en', 'commandSyntaxTTS'),
-            client.intlGet('en', 'commandSyntaxUnmute'),
-            client.intlGet('en', 'commandSyntaxUpkeep'),
-            client.intlGet('en', 'commandSyntaxUptime'),
-            client.intlGet('en', 'commandSyntaxWipe')
-        ];
+        const list = [];
+        for (const lang of [guildId, 'en']) {
+            for (const key of COMMAND_SYNTAX_KEYS) list.push(client.intlGet(lang, key));
+        }
+        list.push(...EXTRA_COMMAND_WORDS);
+        /* The same words without accents are understood as well ("!caida", "!lider") */
+        for (const word of [...list]) {
+            if (plain(word) !== word) list.push(plain(word));
+        }
+        return [...new Set(list)];
     },
 
     getListOfUsedKeywords: function (client, guildId, serverId) {
@@ -127,6 +87,67 @@ module.exports = {
             list.push(value.command);
         }
 
+        /* Commands are matched without caring about upper case or accents ("!Craft" = "!craft"), so a
+           device can not be called "Craft" either: includes() on this list ignores both. */
+        const plainList = new Set(list.map(e => plain(e)));
+        list.includes = (word) => plainList.has(plain(word));
+
         return list;
+    },
+
+    /**
+     *  Aliases (/alias): only replaced as a whole word at the start of the command, not inside it
+     *  (an alias "h" must not change "!send bob hello").
+     */
+    applyAliases: function (aliases, prefix, command) {
+        for (const alias of (aliases || [])) {
+            if (!alias || typeof alias.alias !== 'string' || alias.alias === '') continue;
+            const value = `${alias.value}`;
+            const re = new RegExp(`^${escapeRegExp(alias.alias)}(?=\\s|$)`);
+            if (re.test(command)) {
+                command = command.replace(re, () => value);
+                continue;
+            }
+            if (!alias.alias.startsWith(prefix) && !value.startsWith(prefix)) {
+                const rePrefixed = new RegExp(`^${escapeRegExp(prefix)}${escapeRegExp(alias.alias)}(?=\\s|$)`);
+                if (rePrefixed.test(command)) {
+                    command = command.replace(rePrefixed, () => `${prefix}${value}`);
+                }
+            }
+        }
+        return command;
+    },
+
+    /**
+     *  "!Caida wooden door" -> "!caída wooden door", "!LIDER bob" -> "!líder bob", "!nota anadir x" ->
+     *  "!nota añadir x": the command word (and a known subcommand word) is written like the syntax of
+     *  the language, so upper case and missing accents do not matter. Anything else is not touched.
+     */
+    normalizeCommand: function (client, guildId, prefix, command) {
+        if (typeof command !== 'string' || !prefix || !command.startsWith(prefix)) return command;
+        const m = command.slice(prefix.length).match(/^(\S+)(\s+(\S+))?([\s\S]*)$/);
+        if (!m) return command;
+
+        const find = (word, keys) => {
+            const p = plain(word);
+            for (const lang of [guildId, 'en']) {
+                for (const key of keys) {
+                    const syntax = client.intlGet(lang, key);
+                    if (plain(syntax) === p) return syntax;
+                }
+            }
+            return null;
+        };
+
+        const first = find(m[1], COMMAND_SYNTAX_KEYS);
+        if (first === null) return command;
+        let rest = m[2] !== undefined ? `${m[2]}${m[4]}` : m[4];
+        const withSubcommands = ['commandSyntaxMarker', 'commandSyntaxMarket', 'commandSyntaxNote',
+            'commandSyntaxTimer', 'commandSyntaxTranslateTo'];
+        if (m[3] !== undefined && find(m[1], withSubcommands) !== null) {
+            const second = find(m[3], SUBCOMMAND_SYNTAX_KEYS);
+            if (second !== null) rest = `${m[2].replace(m[3], second)}${m[4]}`;
+        }
+        return `${prefix}${first}${rest}`;
     }
-}
+};
