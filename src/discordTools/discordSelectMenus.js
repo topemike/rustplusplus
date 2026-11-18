@@ -23,6 +23,7 @@ const Fs = require('fs');
 const Path = require('path');
 
 const Client = require('../../index.ts');
+const CustomId = require('../util/customId.js');
 const Constants = require('../util/constants.js');
 const Languages = require('../util/languages.js');
 
@@ -222,7 +223,7 @@ module.exports = {
     getSmartSwitchSelectMenu: function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].switches[entityId];
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         const autoSetting = Client.client.intlGet(guildId, 'autoSettingCap');
         const off = Client.client.intlGet(guildId, 'offCap');
@@ -248,7 +249,7 @@ module.exports = {
 
         return new Discord.ActionRowBuilder().addComponents(
             module.exports.getSelectMenu({
-                customId: `AutoDayNightOnOff${identifier}`,
+                customId: CustomId.make('AutoDayNightOnOff', ids),
                 placeholder: `${autoDayNightOnOffString}`,
                 options: [
                     {
