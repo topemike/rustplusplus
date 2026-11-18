@@ -42,7 +42,7 @@ function amounts(items) {
 
 module.exports = {
     /**
-     *  @param {Object} store Where the state is kept (in memory, e.g. rustplus.upkeepClock).
+     *  @param {Object} store Where the state is kept (in memory, see storeFor).
      *  @param {number} rawExpiry Protection end from Rust+ (unix seconds, 0 = decaying).
      *  @return {number} Corrected protection end (unix seconds, 0 = decaying).
      */
@@ -57,6 +57,22 @@ module.exports = {
         const expiry = added ? rawExpiry : Math.min(state.expiry, rawExpiry);
         store[entityId] = { expiry: expiry, amounts: now };
         return expiry;
+    },
+
+    /**
+     *  The state kept per Discord server + Rust server on the client (not on the Rust+ connection,
+     *  which is created again on every reconnect and would lose it). Also set as rustplus.upkeepClock.
+     */
+    storeFor: function (client, rustplus) {
+        const guildId = rustplus.guildId;
+        const serverId = rustplus.serverId;
+        if (!client.upkeepClocks) client.upkeepClocks = {};
+        if (!client.upkeepClocks[guildId]) client.upkeepClocks[guildId] = {};
+        if (!client.upkeepClocks[guildId][serverId]) {
+            client.upkeepClocks[guildId][serverId] = rustplus.upkeepClock || {};
+        }
+        rustplus.upkeepClock = client.upkeepClocks[guildId][serverId];
+        return rustplus.upkeepClock;
     },
 
     amounts: amounts

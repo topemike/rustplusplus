@@ -21,6 +21,7 @@
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const Timer = require('../util/timer');
 const SwitchOverride = require('../util/switchOverride.js');
+const SwitchTimers = require('../util/switchTimers.js');
 
 module.exports = {
     handler: async function (rustplus, client) {
@@ -52,19 +53,20 @@ module.exports = {
         return groupsId;
     },
 
-    /* markManual = false when an automation (e.g. a raid alarm) changes the group, not a person */
-    TurnOnOffGroup: async function (client, rustplus, guildId, serverId, groupId, value, markManual = true) {
+    /* markManual = false when an automation (e.g. a raid alarm) changes the group, not a person.
+       onlyIds: if given, only these members are changed (the others are left as they are). */
+    TurnOnOffGroup: async function (client, rustplus, guildId, serverId, groupId, value, markManual = true,
+        onlyIds = null) {
         const instance = client.getInstance(guildId);
+        if (!instance.serverList[serverId] || !instance.serverList[serverId].switchGroups[groupId]) return;
 
-        const switches = instance.serverList[serverId].switchGroups[groupId].switches;
+        const switches = instance.serverList[serverId].switchGroups[groupId].switches
+            .map(e => `${e}`).filter(e => !onlyIds || onlyIds.includes(e));
 
         const actionSwitches = [];
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
             if (switches.includes(entityId)) {
-                if (rustplus.currentSwitchTimeouts.hasOwnProperty(entityId)) {
-                    clearTimeout(rustplus.currentSwitchTimeouts[entityId]);
-                    delete rustplus.currentSwitchTimeouts[entityId];
-                }
+                SwitchTimers.clear(client, guildId, entityId);
 
                 if (value && !content.active) {
                     actionSwitches.push(entityId);
@@ -162,10 +164,7 @@ module.exports = {
             return true;
         }
 
-        if (rustplus.currentSwitchTimeouts.hasOwnProperty(groupId)) {
-            clearTimeout(rustplus.currentSwitchTimeouts[groupId]);
-            delete rustplus.currentSwitchTimeouts[groupId];
-        }
+        SwitchTimers.clear(client, guildId, groupId);
 
         const timeSeconds = Timer.getSecondsFromStringTime(rest);
 
@@ -190,21 +189,39 @@ module.exports = {
             time: time
         });
 
-        rustplus.currentSwitchTimeouts[groupId] = setTimeout(async function () {
+        /* Kept on the client: when the time is up the live connection is used (also after a reconnect) */
+        SwitchTimers.arm(client, guildId, serverId, groupId, timeSeconds * 1000, async function (rustplus) {
             const instance = client.getInstance(guildId);
             if (!instance.serverList.hasOwnProperty(serverId) ||
                 !instance.serverList[serverId].switchGroups.hasOwnProperty(groupId)) {
                 return;
             }
+            const server = instance.serverList[serverId];
 
             const str = client.intlGet(guildId, 'automaticallyTurningBackOnOff', {
-                device: instance.serverList[serverId].switchGroups[groupId].name,
+                device: server.switchGroups[groupId].name,
                 status: !active ? onCap : offCap
             });
             rustplus.sendInGameMessage(str);
 
-            await module.exports.TurnOnOffGroup(client, rustplus, guildId, serverId, groupId, !active);
-        }, timeSeconds * 1000);
+            /* The end of the time is not a person's order. Members with an automatic mode (3-8) go back to
+               it (like a single switch); members a raid took over meanwhile are left to the raid. */
+            const turnBack = [];
+            for (const entityId of server.switchGroups[groupId].switches.map(e => `${e}`)) {
+                const sw = server.switches[entityId];
+                if (!sw || sw.raidLock) continue;
+                if (SwitchOverride.OVERRIDABLE_MODES.includes(sw.autoDayNightOnOff)) {
+                    SwitchOverride.clear(sw, false);
+                    client.setInstance(guildId, instance);
+                    DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                    continue;
+                }
+                turnBack.push(entityId);
+            }
+
+            await module.exports.TurnOnOffGroup(client, rustplus, guildId, serverId, groupId, !active, false, turnBack);
+            await DiscordMessages.sendSmartSwitchGroupMessage(guildId, serverId, groupId);
+        }, `${switchGroups[groupId].name} (${groupCommand})`);
 
         rustplus.sendInGameMessage(str);
         await module.exports.TurnOnOffGroup(client, rustplus, guildId, serverId, groupId, active);
