@@ -60,6 +60,8 @@ class RustPlus extends RustPlusLib {
         this.isDeleted = false;             /* Is the rustplus instance deleted? */
         this.isNewConnection = false;       /* Is it an actively selected connection (pressed CONNECT button)? */
         this.isFirstPoll = true;            /* Is this the first poll since connection started? */
+        this.awaitingFirstData = false;     /* Connected, waiting for the first complete poll. */
+        this.reconnectDelayMs = null;       /* Slower reconnection (relay refused / no or expired token). */
 
         /* Interval ids */
         this.pollingTaskId = 0;             /* The id of the main polling mechanism of the rustplus instance. */
@@ -148,11 +150,28 @@ class RustPlus extends RustPlusLib {
     }
 
     /* Connect through the Facepunch Rust+ relay when this server has a relay id and the player has
-       an auth token; otherwise fall back to the legacy direct connection. */
+       an auth token; otherwise fall back to the legacy direct connection (never for servers only
+       known by their relay id: serverIp 'relay'). Refused/expired/missing tokens retry slowly. */
     connect() {
-        const relay = RustRelay.resolve(this.guildId, this.server, this.port, this.playerId);
+        const detail = RustRelay.resolveDetailed(this.guildId, this.server, this.port, this.playerId);
+        const relay = detail.relay;
+        this.reconnectDelayMs = null;
 
         if (!relay) {
+            if (`${this.server}` === 'relay' || (detail.reason === 'noToken' && detail.relayServerId)) {
+                /* Direct connections are dropped since the relay change: wait for a token */
+                this.connectionMode = 'blocked';
+                this.reconnectDelayMs = RustRelay.SLOW_RETRY_MS;
+                this.log(Client.client.intlGet(null, 'warningCap'),
+                    `Rust+ relay: no rustplus_auth_token for ${this.playerId} ` +
+                    `(${detail.reason}) - not connecting, next try in ` +
+                    `${Math.round(RustRelay.SLOW_RETRY_MS / 60000)} min.`, 'warn');
+                RustRelay.warnTokenProblem(Client.client, this.guildId, this.playerId, 'noToken', {});
+                /* Same path as a failed connection: disconnected.js schedules the (slow) retry */
+                setImmediate(() => this.emit('disconnected'));
+                return;
+            }
+
             this.connectionMode = 'direct';
             this.log(Client.client.intlGet(null, 'infoCap'),
                 'Rust+ relay unavailable (no relay server id or auth token) - using direct connection.');
@@ -160,15 +179,115 @@ class RustPlus extends RustPlusLib {
         }
 
         this.connectionMode = 'relay';
-        if (relay.expiresAt && relay.expiresAt * 1000 < Date.now()) {
+        if (detail.reason === 'expired') {
+            this.reconnectDelayMs = RustRelay.SLOW_RETRY_MS;
             this.log(Client.client.intlGet(null, 'warningCap'),
                 `Rust+ auth token for ${this.playerId} expired at ` +
                 `${new Date(relay.expiresAt * 1000).toISOString()}. Re-add credentials.`, 'warn');
+            RustRelay.warnTokenProblem(Client.client, this.guildId, this.playerId, 'expired',
+                { expiresAt: relay.expiresAt });
         }
         this.log(Client.client.intlGet(null, 'infoCap'),
             `Connecting via Rust+ relay (server id ${relay.relayServerId}).`);
 
         RustRelay.connect(this, relay);
+    }
+
+    /* The first poll produced everything the commands use (info, time, team, map markers) */
+    isDataReady() {
+        return !!(this.info && this.time && this.team && this.mapMarkers);
+    }
+
+    /* After connecting: becomes operational once the first complete poll is in (retried on every
+       polling interval when the first one failed). Returns true when it just became operational. */
+    markOperationalIfReady() {
+        if (this.isOperational || !this.awaitingFirstData || this.isDeleted) return false;
+        if (!this.isDataReady()) return false;
+        this.awaitingFirstData = false;
+        this.isOperational = true;
+        this.operationalSince = Date.now();
+        try {
+            this.updateLeaderRustPlusLiteInstance();
+        }
+        catch (e) {
+            this.log(Client.client.intlGet(null, 'errorCap'), `Leader connection: ${e}`, 'error');
+        }
+        return true;
+    }
+
+    /* Custom (!timer) timers in a form that survives a reconnection: [{ id, message, endsAt }] */
+    exportCustomTimers() {
+        const list = [];
+        for (const [id, content] of Object.entries(this.timers || {})) {
+            try {
+                if (!content || !content.timer || !content.timer.getStateRunning()) continue;
+                list.push({ id: id, message: content.message, endsAt: Date.now() + content.timer.getTimeLeft() });
+            }
+            catch (e) { /* broken timer: dropped */ }
+        }
+        return list;
+    }
+
+    /* Re-arms custom timers saved with exportCustomTimers(). Timers that ended while the bot was
+       disconnected ring shortly after (if not more than 10 min late). */
+    restoreCustomTimers(list) {
+        let restored = 0;
+        for (const saved of list || []) {
+            if (!saved || typeof saved.message !== 'string' || !saved.endsAt) continue;
+            let remaining = saved.endsAt - Date.now();
+            if (remaining < -10 * 60 * 1000) continue;
+            if (remaining < 15 * 1000) remaining = 15 * 1000;
+
+            let id = parseInt(saved.id);
+            if (isNaN(id) || Object.keys(this.timers).map(Number).includes(id)) {
+                id = 0;
+                while (Object.keys(this.timers).map(Number).includes(id)) id += 1;
+            }
+            const message = saved.message;
+            this.timers[id] = {
+                timer: new Timer.timer(() => {
+                    const text = Client.client.intlGet(this.guildId, 'timer', { message: message });
+                    this.sendInGameMessage(text, 'TIMER');
+                    try {
+                        const instance = Client.client.getInstance(this.guildId);
+                        const channelId = instance.channelId.activity || instance.channelId.teamchat;
+                        if (channelId) {
+                            DiscordMessages.sendMessage(this.guildId, { content: `⏰ ${text}` }, null, channelId)
+                                .catch(() => { });
+                        }
+                    }
+                    catch (e) { /* the game message is enough */ }
+                    delete this.timers[id];
+                }, remaining),
+                message: message
+            };
+            this.timers[id].timer.start();
+            restored++;
+        }
+        return restored;
+    }
+
+    /* Promotes a team member to leader (directly, or through the leader's own connection).
+       Returns null when it worked, else the text to answer. */
+    async transferLeadership(steamId, name) {
+        let response;
+        if (this.team && this.team.leaderSteamId === this.playerId) {
+            response = await this.promoteToLeaderAsync(steamId);
+            if (!(await this.isResponseValid(response))) response = response || { error: 'no response' };
+            else return null;
+        }
+        else if (this.leaderRustPlusInstance) {
+            response = await this.leaderRustPlusInstance.promoteToLeaderAsync(steamId);
+            if (this.leaderRustPlusInstance && this.leaderRustPlusInstance.isResponseValid(response)) return null;
+        }
+        else {
+            return Client.client.intlGet(this.guildId, 'leaderNotConnected');
+        }
+
+        const error = response && response.error ? `${response.error}` :
+            (response instanceof Error ? response.message : `${response}`);
+        this.log(Client.client.intlGet(null, 'warningCap'), `Leader transfer to ${steamId} failed: ${error}`, 'warn');
+        return Client.client.intlGet(this.guildId, 'leaderTransferFailed', { name: name, error: error });
     }
 
     updateLeaderRustPlusLiteInstance() {
@@ -690,9 +809,21 @@ class RustPlus extends RustPlusLib {
                 Client.client.intlGet(null, 'responseIsUndefined'), 'error');
             return false;
         }
+        else if (response === null) {
+            this.log(Client.client.intlGet(null, 'errorCap'),
+                Client.client.intlGet(null, 'responseIsUndefined'), 'error');
+            return false;
+        }
         else if (response.toString() === 'Error: Timeout reached while waiting for response') {
             this.log(Client.client.intlGet(null, 'errorCap'),
                 Client.client.intlGet(null, 'responseTimeout'), 'error');
+            return false;
+        }
+        else if (response instanceof Error) {
+            /* e.g. the socket is not open yet / was closed: the polling keeps going (it reconnects) */
+            this.log(Client.client.intlGet(null, 'errorCap'), Client.client.intlGet(null, 'responseContainError', {
+                error: response.message
+            }), 'error');
             return false;
         }
         else if (response.hasOwnProperty('error')) {
@@ -1578,19 +1709,13 @@ class RustPlus extends RustPlusLib {
                     }
                 }
 
-                if (this.team.leaderSteamId === this.playerId) {
-                    await this.team.changeLeadership(callerSteamId);
-                }
-                else if (this.leaderRustPlusInstance) {
-                    this.leaderRustPlusInstance.promoteToLeaderAsync(callerSteamId);
-                }
-                else {
-                    return Client.client.intlGet(this.guildId, 'leaderNotConnected');
-                }
-
                 const player = this.team.getPlayer(callerSteamId);
+                const name = player ? player.name : callerSteamId;
+                const failed = await this.transferLeadership(callerSteamId, name);
+                if (failed) return failed;
+
                 return Client.client.intlGet(this.guildId, 'leaderTransferred', {
-                    name: player.name
+                    name: name
                 });
             }
             else {
@@ -1623,15 +1748,8 @@ class RustPlus extends RustPlusLib {
                             }
                         }
 
-                        if (this.team.leaderSteamId === this.playerId) {
-                            await this.team.changeLeadership(player.steamId);
-                        }
-                        else if (this.leaderRustPlusInstance) {
-                            this.leaderRustPlusInstance.promoteToLeaderAsync(player.steamId);
-                        }
-                        else {
-                            return Client.client.intlGet(this.guildId, 'leaderNotConnected');
-                        }
+                        const failed = await this.transferLeadership(player.steamId, player.name);
+                        if (failed) return failed;
 
                         return Client.client.intlGet(this.guildId, 'leaderTransferred', {
                             name: player.name

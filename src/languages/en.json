@@ -1037,5 +1037,19 @@
     "battlemetricsIdSaved": "BattleMetrics id saved: {id}",
     "commandsVoiceBotNotInVoice": "The bot is not in a voice channel.",
     "battlemetricsTokenNotConfigured": "BattleMetrics token not configured.",
-    "facepunchNoLongerSendsNote": "⚠️ Facepunch no longer sends this to Rust+ (since Aug 2026): it will only work again if they bring it back."
+    "facepunchNoLongerSendsNote": "⚠️ Facepunch no longer sends this to Rust+ (since Aug 2026): it will only work again if they bring it back.",
+    "relayTokenProblemTitle": "Rust+ token expired / refused",
+    "relayTokenProblemDesc": "Rust+ token expired / refused for Steam ID {steamId} ({reason}): run /credentials add again with a new rustplus_auth_token. The bot retries every {minutes} min.",
+    "relayTokenReasonRefused": "the Rust+ relay refused it, HTTP {status}",
+    "relayTokenReasonExpired": "it expired {date}",
+    "relayTokenReasonMissing": "no rustplus_auth_token registered",
+    "credentialsInvalidSteamId": "{steamId} is not a valid Steam ID.",
+    "credentialsAuthTokenInvalid": "Invalid Rust+ auth token.",
+    "credentialsAuthTokenExpired": "This Rust+ auth token already expired ({date}). Get a new one and run /credentials add again.",
+    "credentialsAuthTokenWrongSteamId": "The Rust+ auth token belongs to {tokenSteamId}, not {steamId}.",
+    "leaderTransferFailed": "Could not transfer the team leadership to {name}: {error}",
+    "healthAuthTokenExpireSoonTitle": "Rust+ token expires in {time}",
+    "healthAuthTokenExpireSoonDesc": "The Rust+ auth token of Steam ID {steamId} expires {date}. After that the bot cannot connect through the Rust+ relay: run /credentials add again with a new rustplus_auth_token.",
+    "healthAuthTokenExpiredTitle": "Rust+ token expired",
+    "healthAuthTokenExpiredDesc": "The Rust+ auth token of Steam ID {steamId} expired {date}. The bot cannot connect through the Rust+ relay: run /credentials add again with a new rustplus_auth_token."
 }

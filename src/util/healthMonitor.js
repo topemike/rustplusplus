@@ -31,8 +31,11 @@ const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const { toEpochSeconds, formatDuration } = require('./credentialUtils.js');
 const InstanceUtils = require('./instanceUtils.js');
+const RustRelay = require('./rustRelay.js');
 
 const CHECK_INTERVAL_MS = 60 * 1000;
+/* Rust+ auth tokens last ~14 days: warn this long before they expire */
+const AUTH_TOKEN_WARN_SECONDS = 48 * 3600;
 
 function getHealthState(instance) {
     if (!instance.hasOwnProperty('healthMonitor') || instance.healthMonitor === null) {
@@ -40,6 +43,9 @@ function getHealthState(instance) {
     }
     if (!instance.healthMonitor.hasOwnProperty('credentialWarnings')) {
         instance.healthMonitor.credentialWarnings = {};
+    }
+    if (!instance.healthMonitor.hasOwnProperty('authTokenWarnings')) {
+        instance.healthMonitor.authTokenWarnings = {};
     }
     return instance.healthMonitor;
 }
@@ -135,6 +141,49 @@ async function checkCredentials(client, guildId) {
                 }));
 
             state.credentialWarnings[steamId] = { soon: expire, expired: warned.expired || null };
+            changed = true;
+        }
+    }
+
+    /* Rust+ auth tokens (relay connection): private message like the FCM credentials */
+    for (const [steamId, credential] of Object.entries(credentials)) {
+        if (steamId === 'hoster' || credential === null || typeof credential !== 'object') continue;
+        const token = RustRelay.normaliseAuthToken(credential.rustplus_auth_token);
+        if (!token) continue;
+        const parsed = RustRelay.parseAuthToken(token);
+        const expire = parsed ? parsed.expiresAt : null;
+        if (!expire) continue;
+
+        const warned = state.authTokenWarnings[steamId] || {};
+        const remaining = expire - now;
+        const userId = credential.discord_user_id || null;
+
+        if (remaining <= 0) {
+            if (warned.expired === expire) continue;
+            await sendPrivateMessage(client, guildId, userId, Constants.COLOR_INACTIVE,
+                client.intlGet(guildId, 'healthAuthTokenExpiredTitle'),
+                client.intlGet(guildId, 'healthAuthTokenExpiredDesc', {
+                    steamId: steamId,
+                    date: `<t:${expire}:F>`
+                }));
+            state.authTokenWarnings[steamId] = { soon: expire, expired: expire };
+            changed = true;
+        }
+        else if (remaining <= AUTH_TOKEN_WARN_SECONDS) {
+            if (warned.soon === expire) continue;
+            await sendPrivateMessage(client, guildId, userId, Constants.COLOR_CARGO_SHIP_ENTERS_EGRESS_STAGE,
+                client.intlGet(guildId, 'healthAuthTokenExpireSoonTitle', { time: formatDuration(remaining) }),
+                client.intlGet(guildId, 'healthAuthTokenExpireSoonDesc', {
+                    steamId: steamId,
+                    date: `<t:${expire}:F>`
+                }));
+            state.authTokenWarnings[steamId] = { soon: expire, expired: warned.expired || null };
+            changed = true;
+        }
+    }
+    for (const steamId of Object.keys(state.authTokenWarnings)) {
+        if (!credentials.hasOwnProperty(steamId)) {
+            delete state.authTokenWarnings[steamId];
             changed = true;
         }
     }

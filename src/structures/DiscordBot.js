@@ -308,9 +308,23 @@ class DiscordBot extends Discord.Client {
             return null;
         }
 
+        /* Custom !timer timers survive the reconnection (same server only) */
+        let carriedTimers = [];
+        if (!this.pendingCustomTimers) this.pendingCustomTimers = new Object();
+        const pending = this.pendingCustomTimers[guildId];
+        if (pending && pending.serverId === serverId) carriedTimers = pending.timers || [];
+        delete this.pendingCustomTimers[guildId];
+
         /* Only one connection per Discord server: close the previous one if it is still there */
         const previous = this.rustplusInstances[guildId];
         if (previous) {
+            if (previous.serverId === serverId && typeof previous.exportCustomTimers === 'function') {
+                carriedTimers = carriedTimers.concat(previous.exportCustomTimers());
+            }
+            for (const content of Object.values(previous.timers || {})) {
+                try { content.timer.stop(); } catch (e) { /* already stopped */ }
+            }
+            previous.timers = new Object();
             previous.isDeleted = true;
             clearInterval(previous.pollingTaskId);
             try { previous.disconnect(); } catch (e) { /* already closed */ }
@@ -319,6 +333,17 @@ class DiscordBot extends Discord.Client {
         let rustplus = new RustPlus(guildId, serverIp, appPort, steamId, playerToken);
         /* Timed-command timers are kept per Discord server: they survive the reconnect */
         require('../util/switchTimers.js').bind(this, rustplus);
+        if (carriedTimers.length > 0) {
+            try {
+                const restored = rustplus.restoreCustomTimers(carriedTimers);
+                if (restored > 0) {
+                    this.log(this.intlGet(null, 'infoCap'), `Custom timers restored after reconnecting: ${restored}.`);
+                }
+            }
+            catch (e) {
+                this.log(this.intlGet(null, 'errorCap'), `Could not restore custom timers: ${e}`, 'error');
+            }
+        }
 
         /* Add rustplus instance to Object */
         this.rustplusInstances[guildId] = rustplus;
@@ -340,12 +365,18 @@ class DiscordBot extends Discord.Client {
             if (!instance) return;
 
             if (instance.activeServer !== null && instance.serverList.hasOwnProperty(instance.activeServer)) {
-                this.createRustplusInstance(
-                    guildId,
-                    instance.serverList[instance.activeServer].serverIp,
-                    instance.serverList[instance.activeServer].appPort,
-                    instance.serverList[instance.activeServer].steamId,
-                    instance.serverList[instance.activeServer].playerToken);
+                /* One broken guild must not stop the others from connecting */
+                try {
+                    this.createRustplusInstance(
+                        guildId,
+                        instance.serverList[instance.activeServer].serverIp,
+                        instance.serverList[instance.activeServer].appPort,
+                        instance.serverList[instance.activeServer].steamId,
+                        instance.serverList[instance.activeServer].playerToken);
+                }
+                catch (e) {
+                    this.log(this.intlGet(null, 'errorCap'), `Could not connect guild ${guildId}: ${e}`, 'error');
+                }
             }
         });
     }

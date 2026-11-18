@@ -52,7 +52,7 @@ module.exports = {
 			value: `${member}`
 		}));
 
-		if (!rustplus || (rustplus && !rustplus.isOperational)) {
+		if (!rustplus || (rustplus && !rustplus.isOperational) || !rustplus.team) {
 			const str = client.intlGet(interaction.guildId, 'notConnectedToRustServer');
 			await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
 			client.log(client.intlGet(null, 'warningCap'), str);
@@ -67,10 +67,10 @@ module.exports = {
 			return;
 		}
 
-		if (!Object.keys(instance.serverListLite[rustplus.serverId]).includes(rustplus.team.leaderSteamId)) {
+		if (!Object.keys(instance.serverListLite[rustplus.serverId] || {}).includes(rustplus.team.leaderSteamId)) {
 			let names = '';
 			for (const player of rustplus.team.players) {
-				if (Object.keys(instance.serverListLite[rustplus.serverId]).includes(player.steamId)) {
+				if (Object.keys(instance.serverListLite[rustplus.serverId] || {}).includes(player.steamId)) {
 					names += `${player.name}, `
 				}
 			}
@@ -95,7 +95,7 @@ module.exports = {
 				}
 				else {
 					if (rustplus.generalSettings.leaderCommandOnlyForPaired) {
-						if (!Object.keys(instance.serverListLite[rustplus.serverId]).includes(player.steamId)) {
+						if (!Object.keys(instance.serverListLite[rustplus.serverId] || {}).includes(player.steamId)) {
 							const str = client.intlGet(rustplus.guildId, 'playerNotPairedWithServer', {
 								name: player.name
 							});
@@ -106,11 +106,13 @@ module.exports = {
 						}
 					}
 
-					if (rustplus.team.leaderSteamId === rustplus.playerId) {
-						await rustplus.team.changeLeadership(player.steamId);
-					}
-					else {
-						rustplus.leaderRustPlusInstance.promoteToLeaderAsync(player.steamId);
+					/* null leader connection -> leaderNotConnected; failed promote -> its error */
+					const failed = await rustplus.transferLeadership(player.steamId, player.name);
+					if (failed) {
+						await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, failed,
+							instance.serverList[rustplus.serverId].title));
+						rustplus.log(client.intlGet(interaction.guildId, 'warningCap'), failed);
+						return;
 					}
 
 					const str = client.intlGet(interaction.guildId, 'leaderTransferred', {
