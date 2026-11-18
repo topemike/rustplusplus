@@ -23,6 +23,9 @@ const Map = require('../util/map.js');
 const ExtraEvents = require('./ExtraEvents.js');
 const Timer = require('../util/timer');
 
+/* Not one marker of a type in this long since connecting: Rust+ does not send that type */
+const MARKER_TYPE_UNAVAILABLE_MS = 2 * 60 * 60 * 1000;
+
 class MapMarkers {
     constructor(mapMarkers, rustplus, client) {
         this._markers = mapMarkers.markers;
@@ -73,6 +76,12 @@ class MapMarkers {
 
         /* Vending Machine variables */
         this.knownVendingMachines = [];
+
+        /* When each marker type was last received, and when this connection started. Since the Rust
+           update of August 2026 Facepunch does not send some types (Cargo Ship, Patrol Helicopter,
+           vending machines, Traveling Vendor, explosions) to Rust+ any more: see isTypeUnavailable(). */
+        this.connectedAt = Date.now();
+        this.lastSeenByType = new Object();
 
         this.updateMapMarkers(mapMarkers);
     }
@@ -259,7 +268,33 @@ class MapMarkers {
 
     /* Update event map markers */
 
+    /* Start of the current connection (a reconnection of the same instance starts it again) */
+    getConnectionStart() {
+        const uptime = this.rustplus && this.rustplus.uptimeServer ? new Date(this.rustplus.uptimeServer).getTime() : 0;
+        return Math.max(this.connectedAt, isNaN(uptime) ? 0 : uptime);
+    }
+
+    /**
+     *  Is this marker type not sent by Rust+? True when the connection is older than 2 hours and not a
+     *  single marker of that type came in it. As soon as one comes (Facepunch may bring them back) the
+     *  normal behaviour returns.
+     */
+    isTypeUnavailable(type, now = Date.now()) {
+        const start = this.getConnectionStart();
+        if (now - start <= MARKER_TYPE_UNAVAILABLE_MS) return false;
+        const lastSeen = this.lastSeenByType[type];
+        return !lastSeen || lastSeen < start;
+    }
+
+    recordSeenTypes(mapMarkers, now = Date.now()) {
+        if (!mapMarkers || !Array.isArray(mapMarkers.markers)) return;
+        for (const marker of mapMarkers.markers) {
+            if (marker && marker.type !== undefined) this.lastSeenByType[marker.type] = now;
+        }
+    }
+
     updateMapMarkers(mapMarkers) {
+        this.recordSeenTypes(mapMarkers);
         this.updatePlayers(mapMarkers);
         this.updateCargoShips(mapMarkers);
         this.updatePatrolHelicopters(mapMarkers);

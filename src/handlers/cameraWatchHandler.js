@@ -136,15 +136,21 @@ async function sendAlert(client, guildId, rustplus, cameraId, view, image, menti
     const channelId = alertChannel(instance);
     const channel = DiscordTools.getTextChannelById(guildId, channelId);
     if (!channel) return;
-    const strangers = view.strangers.map(p => p.name ? `${p.name} a ${p.distance} m` : `desconocido a ${p.distance} m`);
+    const t = (id, v = {}) => client.intlGet(guildId, id, v);
+    const strangers = view.strangers.map(p => p.name ? t('camAlertNamedAt', { name: p.name, distance: p.distance }) :
+        t('camAlertUnknownAt', { distance: p.distance }));
     const online = teamOnline(rustplus);
     const lines = [
-        `👁️ **${cameraId}**: ${view.strangers.length === 1 ? '1 jugador que no es del equipo' :
-            `${view.strangers.length} jugadores que no son del equipo`} (${strangers.join(', ')}).`
+        t('camAlertHeader', {
+            camera: cameraId,
+            who: view.strangers.length === 1 ? t('camAlertOneStranger') :
+                t('camAlertStrangers', { count: view.strangers.length }),
+            list: strangers.join(', ')
+        })
     ];
-    if (view.team.length > 0) lines.push(`Del equipo a la vista: ${view.team.map(p => p.name).join(', ')}.`);
-    lines.push(mention ? '🔴 No hay nadie del equipo conectado.' :
-        `🟢 ${online === 1 ? 'Hay 1 compañero conectado' : `Hay ${online} compañeros conectados`}.`);
+    if (view.team.length > 0) lines.push(t('camAlertTeamInView', { names: view.team.map(p => p.name).join(', ') }));
+    lines.push(mention ? t('camAlertNobodyOnline') :
+        (online === 1 ? t('camAlertOneOnline') : t('camAlertOnline', { count: online })));
     const payload = { content: (mention ? '@everyone\n' : '') + lines.join('\n') };
     if (image) payload.files = [{ attachment: image, name: 'camara.png' }];
     try {
@@ -230,8 +236,8 @@ async function tickGuild(client, guildId, now) {
     }
 }
 
-function friendList(cfg) {
-    return [...cfg.friendIds.map(f => `${f.name || '(buscando nombre…)'} [${f.steamId}]`), ...cfg.friends].join(', ');
+function friendList(cfg, t) {
+    return [...cfg.friendIds.map(f => `${f.name || t('camWatchLookingUpName')} [${f.steamId}]`), ...cfg.friends].join(', ');
 }
 
 function command(rustplus, client, raw) {
@@ -241,38 +247,44 @@ function command(rustplus, client, raw) {
     if (!m) return null;
     const word = m[1].toLowerCase();
     if (![`${prefix}vigilar`, `${prefix}watch`].includes(word)) return null;
+    if (!client.getInstance(rustplus.guildId)) return null;
 
     const instance = client.getInstance(rustplus.guildId);
     const cfg = settings(instance);
     const args = m[2].trim().split(/\s+/).filter(a => a !== '');
     const save = () => client.setInstance(rustplus.guildId, instance);
+    const t = (id, v = {}) => client.intlGet(rustplus.guildId, id, v);
+    const cmd = word;
 
     if (args.length === 0) {
-        if (cfg.cameras.length === 0) return '👁️ Vigilancia: ninguna cámara. Añade una con !vigilar CODIGO';
-        let paused = hosterInGame(rustplus) ? ' (en pausa: la cuenta del bot está en el juego)' : '';
+        if (cfg.cameras.length === 0) return t('camWatchNone', { cmd: cmd });
+        let paused = hosterInGame(rustplus) ? t('camWatchPausedInGame') : '';
         if (cfg.pausedUntil && Date.now() < cfg.pausedUntil) {
-            paused = ` (en pausa ${Math.ceil((cfg.pausedUntil - Date.now()) / 60000)} min más; !vigilar seguir para quitarla)`;
+            paused = t('camWatchPausedFor', { minutes: Math.ceil((cfg.pausedUntil - Date.now()) / 60000), cmd: cmd });
         }
-        const list = friendList(cfg);
-        const friends = list ? ` Amigos (no avisan): ${list}.` : '';
-        return `👁️ Vigilancia ${cfg.enabled ? 'ACTIVADA' : 'DESACTIVADA'}${paused}. Cámaras: ${cfg.cameras.join(', ')}.${friends}`;
+        const list = friendList(cfg, t);
+        const friends = list ? t('camWatchFriendsInline', { list: list }) : '';
+        return t('camWatchStatus', {
+            state: cfg.enabled ? t('camWatchOn') : t('camWatchOff'), paused: paused,
+            cameras: cfg.cameras.join(', '), friends: friends
+        });
     }
     const a0 = args[0].toLowerCase();
     const rest = args.slice(1).join(' ');
 
     /* Allies that are not in the in-game team (e.g. more than the team limit): they do not warn */
     if (['amigo', 'friend'].includes(a0)) {
-        if (!rest) return 'Uso: !vigilar amigo STEAMID (o el nombre exacto del juego)';
+        if (!rest) return t('camWatchFriendUsage', { cmd: cmd });
         const idMatch = rest.match(/(7656\d{13})/);
         if (idMatch && STEAM_ID.test(idMatch[1])) {
             const steamId = idMatch[1];
             if (!cfg.friendIds.some(f => f.steamId === steamId)) cfg.friendIds.push({ steamId: steamId, name: null, checked: 0 });
             save();
-            return `👁️ Steam ID ${steamId} añadido a los amigos: en unos segundos el bot mira su nombre de Steam y lo sigue aunque se lo cambie.`;
+            return t('camWatchFriendIdAdded', { steamId: steamId });
         }
         if (!cfg.friends.some(f => f.toLowerCase() === rest.toLowerCase())) cfg.friends.push(rest);
         save();
-        return `👁️ ${rest} no hará saltar la vigilancia (si Rust+ manda su nombre).`;
+        return t('camWatchFriendAdded', { name: rest });
     }
     if (['quitaramigo', 'unfriend'].includes(a0)) {
         const before = cfg.friends.length + cfg.friendIds.length;
@@ -281,48 +293,48 @@ function command(rustplus, client, raw) {
         cfg.friendIds = cfg.friendIds.filter(f => !rest.includes(f.steamId) && `${f.name}`.toLowerCase() !== key);
         save();
         return before === cfg.friends.length + cfg.friendIds.length ?
-            `👁️ ${rest} no estaba en los amigos.` : `👁️ ${rest} quitado de los amigos.`;
+            t('camWatchFriendNotFound', { name: rest }) : t('camWatchFriendRemoved', { name: rest });
     }
     if (['amigos', 'friends'].includes(a0)) {
-        const list = friendList(cfg);
-        return list ? `👁️ Amigos (no avisan): ${list}.` : '👁️ No hay amigos añadidos.';
+        const list = friendList(cfg, t);
+        return list ? t('camWatchFriends', { list: list }) : t('camWatchNoFriends');
     }
 
     /* Silence it for a while: !vigilar pausa 30m / 2h (1 hour by default) */
     if (['pausa', 'pause'].includes(a0)) {
         const m = (args[1] || '1h').match(/^(\d+)\s*(m|min|h)?$/i);
-        if (!m) return 'Uso: !vigilar pausa 30m  (o 2h)';
+        if (!m) return t('camWatchPauseUsage', { cmd: cmd });
         const minutes = parseInt(m[1]) * ((m[2] || 'm').toLowerCase() === 'h' ? 60 : 1);
         cfg.pausedUntil = Date.now() + Math.min(minutes, 24 * 60) * 60 * 1000;
         save();
-        return `👁️ Vigilancia en pausa ${Math.min(minutes, 24 * 60)} min. !vigilar seguir para reanudarla antes.`;
+        return t('camWatchPaused', { minutes: Math.min(minutes, 24 * 60), cmd: cmd });
     }
     if (['seguir', 'resume', 'reanudar'].includes(a0)) {
         delete cfg.pausedUntil;
         save();
-        return '👁️ Vigilancia reanudada.';
+        return t('camWatchResumed');
     }
     if (['on', 'encender', 'activar'].includes(a0)) {
         cfg.enabled = true; save();
-        return '👁️ Vigilancia de cámaras activada.';
+        return t('camWatchEnabled');
     }
     if (['off', 'apagar', 'desactivar'].includes(a0)) {
         cfg.enabled = false; save();
-        return '👁️ Vigilancia de cámaras desactivada.';
+        return t('camWatchDisabled');
     }
     if (['quitar', 'remove', 'borrar'].includes(a0)) {
         const id = args[1];
-        if (!id) return 'Uso: !vigilar quitar CODIGO';
+        if (!id) return t('camWatchRemoveUsage', { cmd: cmd });
         const before = cfg.cameras.length;
         cfg.cameras = cfg.cameras.filter(c => c.toLowerCase() !== id.toLowerCase());
         save();
-        return before === cfg.cameras.length ? `👁️ ${id} no estaba en la vigilancia.` : `👁️ ${id} quitada de la vigilancia.`;
+        return before === cfg.cameras.length ? t('camWatchNotWatched', { id: id }) : t('camWatchRemoved', { id: id });
     }
     const id = args[0];
-    if (cfg.cameras.some(c => c === id)) return `👁️ ${id} ya está en la vigilancia.`;
+    if (cfg.cameras.some(c => c === id)) return t('camWatchAlreadyWatched', { id: id });
     cfg.cameras.push(id);
     save();
-    return `👁️ ${id} añadida a la vigilancia. Avisará cuando vea a alguien (con @everyone si no hay nadie del equipo conectado).`;
+    return t('camWatchAdded', { id: id });
 }
 
 module.exports = {

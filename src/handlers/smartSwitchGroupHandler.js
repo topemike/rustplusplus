@@ -128,37 +128,48 @@ module.exports = {
         const statusEn = client.intlGet('en', 'commandSyntaxStatus');
         const statusLang = client.intlGet(guildId, 'commandSyntaxStatus');
 
-        const groupId = Object.keys(switchGroups).find(e =>
-            command === `${prefix}${switchGroups[e].command}` ||
-            command.startsWith(`${prefix}${switchGroups[e].command} `));
+        /* Upper or lower case does not matter: "!GRP off" = "!grp off" */
+        const lower = command.toLowerCase();
+        const groupId = Object.keys(switchGroups).find(e => {
+            const c = `${prefix}${switchGroups[e].command}`.toLowerCase();
+            return lower === c || lower.startsWith(`${c} `);
+        });
 
         if (!groupId) return false;
 
         const groupCommand = `${prefix}${switchGroups[groupId].command}`;
-        let rest = command.replace(`${groupCommand} ${onEn}`, '');
-        rest = rest.replace(`${groupCommand} ${onLang}`, '');
-        rest = rest.replace(`${groupCommand} ${offEn}`, '');
-        rest = rest.replace(`${groupCommand} ${offLang}`, '');
-        rest = rest.replace(`${groupCommand}`, '').trim();
+        /* Also understood like the switches: "encender/encendido/apagar/apagado" (and any case) */
+        const words = command.slice(groupCommand.length).trim().split(/\s+/).filter(w => w !== '');
+        const word = (words[0] || '').toLowerCase();
+        const rest = words.slice(1).join(' ').toLowerCase();
 
         let active;
-        if (command.startsWith(`${groupCommand} ${onEn}`) || command.startsWith(`${groupCommand} ${onLang}`)) {
+        if ([onEn, onLang, 'on', 'encender', 'encendido'].map(w => w.toLowerCase()).includes(word)) {
             active = true;
         }
-        else if (command.startsWith(`${groupCommand} ${offEn}`) || command.startsWith(`${groupCommand} ${offLang}`)) {
+        else if ([offEn, offLang, 'off', 'apagar', 'apagado'].map(w => w.toLowerCase()).includes(word)) {
             active = false;
         }
-        else if (command === `${groupCommand} ${statusEn}` || command === `${groupCommand} ${statusLang}`) {
-            const switchStatus = switchGroups[groupId].switches.map(switchId => {
-                const { active, name, reachable } = instance.serverList[serverId].switches[switchId];
-                return { active, name, reachable }
-            });
+        else if ([statusEn, statusLang].map(w => w.toLowerCase()).includes(word) && rest === '') {
+            const switchStatus = switchGroups[groupId].switches.filter(switchId =>
+                instance.serverList[serverId].switches.hasOwnProperty(switchId)).map(switchId => {
+                    const { active, name, reachable } = instance.serverList[serverId].switches[switchId];
+                    return { active, name, reachable }
+                });
             const statusMessage = switchStatus.map(status =>
                 `${status.name}: ${status.reachable ? (status.active ? onCap : offCap) : notFoundCap}`).join(', ');
             rustplus.sendInGameMessage(`${client.intlGet(guildId, 'status')}: ${statusMessage}`);
             return true;
         }
         else {
+            /* "!grp" alone or an unknown word: how to use it, nothing is switched */
+            rustplus.sendInGameMessage(client.intlGet(guildId, 'usageGroup', { command: groupCommand }));
+            return true;
+        }
+
+        /* "!grp on 2m": a time after on/off turns it back afterwards; anything else is not a time */
+        if (rest !== '' && !/^(\d+[dhms])+$/.test(rest.replace(/\s+/g, ''))) {
+            rustplus.sendInGameMessage(client.intlGet(guildId, 'usageGroup', { command: groupCommand }));
             return true;
         }
 
@@ -167,7 +178,7 @@ module.exports = {
             delete rustplus.currentSwitchTimeouts[groupId];
         }
 
-        const timeSeconds = Timer.getSecondsFromStringTime(rest);
+        const timeSeconds = rest === '' ? null : Timer.getSecondsFromStringTime(rest);
 
         let str = client.intlGet(guildId, 'turningGroupOnOff', {
             group: switchGroups[groupId].name,
