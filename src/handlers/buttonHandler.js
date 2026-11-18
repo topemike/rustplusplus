@@ -31,6 +31,7 @@ const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const DiscordButtons = require('../discordTools/discordButtons.js');
 const DiscordModals = require('../discordTools/discordModals.js');
 const SwitchOverride = require('../util/switchOverride.js');
+const SwitchTimers = require('../util/switchTimers.js');
 
 module.exports = async (client, interaction) => {
     const instance = client.getInstance(interaction.guildId);
@@ -810,8 +811,7 @@ module.exports = async (client, interaction) => {
         /* Answer the click now: talking to the switch can take longer than the 3 seconds Discord gives */
         await defer();
 
-        clearTimeout(rustplus.currentSwitchTimeouts[ids.entityId]);
-        delete rustplus.currentSwitchTimeouts[ids.entityId];
+        SwitchTimers.clear(client, guildId, ids.entityId);
 
         const active = (interaction.customId.startsWith('SmartSwitchOn')) ? true : false;
         const prevActive = server.switches[ids.entityId].active;
@@ -876,10 +876,7 @@ module.exports = async (client, interaction) => {
         client.setInstance(guildId, instance);
 
         /* A pending timed command (e.g. "turn back off in 5 min") would later go against the automatic mode */
-        if (rustplus && rustplus.currentSwitchTimeouts) {
-            clearTimeout(rustplus.currentSwitchTimeouts[ids.entityId]);
-            delete rustplus.currentSwitchTimeouts[ids.entityId];
-        }
+        SwitchTimers.clear(client, guildId, ids.entityId);
 
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'buttonValueChange', {
             id: `${verifyId}`,
@@ -922,10 +919,7 @@ module.exports = async (client, interaction) => {
         delete server.switches[ids.entityId];
         client.setInstance(guildId, instance);
 
-        if (rustplus) {
-            clearTimeout(rustplus.currentSwitchTimeouts[ids.entityId]);
-            delete rustplus.currentSwitchTimeouts[ids.entityId];
-        }
+        SwitchTimers.clear(client, guildId, ids.entityId);
 
         for (const [groupId, content] of Object.entries(server.switchGroups)) {
             if (content.switches.includes(ids.entityId.toString())) {
@@ -1166,10 +1160,10 @@ module.exports = async (client, interaction) => {
 
         await defer();
 
-        if (rustplus) {
-            clearTimeout(rustplus.currentSwitchTimeouts[ids.groupId]);
-            delete rustplus.currentSwitchTimeouts[ids.groupId];
+        /* Cleared even while reconnecting: the timers are kept per guild and survive it */
+        SwitchTimers.clear(client, guildId, ids.groupId);
 
+        if (rustplus) {
             if (rustplus.serverId === ids.serverId) {
                 const active = (interaction.customId.startsWith('GroupTurnOn') ? true : false);
 
@@ -1222,10 +1216,7 @@ module.exports = async (client, interaction) => {
             return;
         }
 
-        if (rustplus) {
-            clearTimeout(rustplus.currentSwitchTimeouts[ids.groupId]);
-            delete rustplus.currentSwitchTimeouts[ids.groupId];
-        }
+        SwitchTimers.clear(client, guildId, ids.groupId);
 
         await defer();
 

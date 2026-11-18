@@ -154,10 +154,7 @@ module.exports = async (client, interaction) => {
             client.setInstance(guildId, instance);
 
             /* A pending timed command would later turn the switch against the chosen mode */
-            if (rustplus && rustplus.currentSwitchTimeouts) {
-                clearTimeout(rustplus.currentSwitchTimeouts[ids.entityId]);
-                delete rustplus.currentSwitchTimeouts[ids.entityId];
-            }
+            require('../util/switchTimers.js').clear(client, guildId, ids.entityId);
         }
 
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'selectMenuValueChange', {
