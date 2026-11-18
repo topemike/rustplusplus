@@ -275,9 +275,9 @@ class MapMarkers {
     }
 
     /**
-     *  Is this marker type not sent by Rust+? True when the connection is older than 2 hours and not a
-     *  single marker of that type came in it. As soon as one comes (Facepunch may bring them back) the
-     *  normal behaviour returns.
+     *  Is this marker type not sent by Rust+? True when no marker of that type came in this connection
+     *  and no vending machine came either after VENDING_CHECK_MS. As soon as one comes (Facepunch may
+     *  bring them back) the normal behaviour returns.
      */
     isTypeUnavailable(type, now = Date.now()) {
         const start = this.getConnectionStart();
