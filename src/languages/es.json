@@ -1029,5 +1029,12 @@
     "proximityNoLocation": "No tiene ubicación guardada: ponte al lado y escribe {command} aquí",
     "proximityStatus": "Ubicación {location}. {details}",
     "smartSwitchCommandUsage": "Uso: {command} on | off | estado | aquí, y si quieres con tiempo: {command} on 2m",
-    "leaderNotConnected": "Ahora el bot no puede pasar el líder: el líder actual no está conectado a través del bot. Prueba en un minuto."
+    "leaderNotConnected": "Ahora el bot no puede pasar el líder: el líder actual no está conectado a través del bot. Prueba en un minuto.",
+    "storageMonitorNoDataYet": "Aún no hay datos de este Storage Monitor: aparecerán tras la próxima lectura.",
+    "userBlacklistedReply": "Estás en la lista negra de este bot.",
+    "battlemetricsIdInvalid": "No se encontró el id de BattleMetrics {id}: no se ha cambiado nada.",
+    "battlemetricsIdSaved": "Id de BattleMetrics guardado: {id}",
+    "commandsVoiceBotNotInVoice": "El bot no está en un canal de voz.",
+    "battlemetricsTokenNotConfigured": "El token de BattleMetrics no está configurado.",
+    "facepunchNoLongerSendsNote": "⚠️ Facepunch ya no envía esto a Rust+ (desde agosto de 2026): solo volverá a funcionar si lo recuperan."
 }

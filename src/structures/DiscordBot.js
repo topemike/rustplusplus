@@ -196,7 +196,7 @@ class DiscordBot extends Discord.Client {
         const channel = DiscordTools.getTextChannelById(interaction.guildId, interaction.channelId);
         const args = new Object();
         args['guild'] = `${interaction.member.guild.name} (${interaction.member.guild.id})`;
-        args['channel'] = `${channel.name} (${interaction.channelId})`;
+        args['channel'] = `${channel ? channel.name : '-'} (${interaction.channelId})`;
         args['user'] = `${interaction.user.username} (${interaction.user.id})`;
         args[(type === 'slashCommand') ? 'command' : 'customid'] = (type === 'slashCommand') ?
             `${interaction.commandName}` : `${interaction.customId}`;
@@ -209,7 +209,7 @@ class DiscordBot extends Discord.Client {
         const instance = this.getInstance(guild.id);
         const firstTime = instance.firstTime;
 
-        await require('../discordTools/RegisterSlashCommands')(this, guild);
+        await require('../discordTools/RegisterSlashCommands')(this, guild, true);
 
         let category = await require('../discordTools/SetupGuildCategory')(this, guild);
         await require('../discordTools/SetupGuildChannels')(this, guild, category);
@@ -543,15 +543,23 @@ class DiscordBot extends Discord.Client {
 
         if (instance.blacklist['discordIds'].includes(interaction.user.id) &&
             !interaction.member.permissions.has(Discord.PermissionsBitField.Flags.Administrator)) {
+            /* Blacklisted: answer anyway (privately) so the command does not hang */
+            await this.interactionReply(interaction, {
+                ...DiscordEmbeds.getActionInfoEmbed(1, this.intlGet(interaction.guildId, 'userBlacklistedReply')),
+                ephemeral: true
+            });
             return false;
         }
 
         /* If role isn't setup yet, validate as true */
         if (instance.role === null) return true;
 
+        /* The access role was deleted from Discord: do not lock everyone out, behave as without a role */
+        const role = DiscordTools.getRole(interaction.guildId, instance.role);
+        if (!role) return true;
+
         if (!interaction.member.permissions.has(Discord.PermissionsBitField.Flags.Administrator) &&
             !interaction.member.roles.cache.has(instance.role)) {
-            let role = DiscordTools.getRole(interaction.guildId, instance.role);
             const str = this.intlGet(interaction.guildId, 'notPartOfRole', { role: role.name });
             await this.interactionReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
             this.log(this.intlGet(null, 'warningCap'), str);

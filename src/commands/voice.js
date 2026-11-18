@@ -75,16 +75,23 @@ module.exports = {
             case 'leave': {
                 const connection = getVoiceConnection(interaction.guild.id);
                 if (connection) {
+                    /* The user may not be in a voice channel: log the bot's channel instead */
+                    const channelId = connection.joinConfig ? connection.joinConfig.channelId : null;
+                    const channel = channelId ? interaction.guild.channels.cache.get(channelId) : null;
                     connection.destroy();
                     await DiscordMessages.sendVoiceMessage(interaction,
                         client.intlGet(interaction.guildId, 'commandsVoiceBotLeftVoice'));
                     client.log(client.intlGet(null, 'infoCap'),
                         client.intlGet(interaction.guildId, 'commandsVoiceLeave',
                             {
-                                name: interaction.member.voice.channel.name,
-                                id: interaction.member.voice.channel.id,
+                                name: channel && channel.name ? channel.name : client.intlGet(interaction.guildId, 'unknown'),
+                                id: channelId ? channelId : client.intlGet(interaction.guildId, 'unknown'),
                                 guild: interaction.member.guild.name
                             }));
+                }
+                else {
+                    await DiscordMessages.sendVoiceMessage(interaction,
+                        client.intlGet(interaction.guildId, 'commandsVoiceBotNotInVoice'));
                 }
             } break;
 

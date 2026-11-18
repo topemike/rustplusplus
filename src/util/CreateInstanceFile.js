@@ -53,7 +53,8 @@ module.exports = (client, guild) => {
                 server: null,
                 event: null,
                 team: null,
-                battlemetricsPlayers: null
+                battlemetricsPlayers: null,
+                upkeep: null
             },
             activeServer: null,
             serverList: {},
@@ -163,7 +164,8 @@ module.exports = (client, guild) => {
                 server: null,
                 event: null,
                 team: null,
-                battlemetricsPlayers: null
+                battlemetricsPlayers: null,
+                upkeep: null
             }
         }
         else {
@@ -172,7 +174,7 @@ module.exports = (client, guild) => {
             if (!instance.informationMessageId.hasOwnProperty('event')) instance.informationMessageId.event = null;
             if (!instance.informationMessageId.hasOwnProperty('team')) instance.informationMessageId.team = null;
             if (!instance.informationMessageId.hasOwnProperty('upkeep')) instance.informationMessageId.upkeep = null;
-            if (!instance.informationMessageId.hasOwnProperty('team'))
+            if (!instance.informationMessageId.hasOwnProperty('battlemetricsPlayers'))
                 instance.informationMessageId.battlemetricsPlayers = null;
         }
 

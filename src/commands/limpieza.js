@@ -69,6 +69,8 @@ module.exports = {
 		let content = null;
 		if (subcommand === 'server') {
 			content = ServerLifecycle.getServerChangeMessage(client, guildId, active);
+			/* Not connected: there is no "current" server to keep, every stored server is an "other" one */
+			if (!content && !active) content = ServerLifecycle.getPurgeAllMessage(client, guildId);
 		}
 		else {
 			content = ServerLifecycle.getPurgeAllMessage(client, guildId);

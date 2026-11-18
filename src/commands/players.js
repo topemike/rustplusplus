@@ -69,7 +69,12 @@ module.exports = {
 		client.logInteraction(interaction, verifyId, 'slashCommand');
 
 		if (!await client.validatePermissions(interaction)) return;
-		if (Config.battlemetrics.token === '') return;
+		if (Config.battlemetrics.token === '') {
+			const str = client.intlGet(interaction.guildId, 'battlemetricsTokenNotConfigured');
+			await client.interactionReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+			client.log(client.intlGet(null, 'warningCap'), str);
+			return;
+		}
 		await interaction.deferReply({ ephemeral: true });
 
 		let battlemetricsId = interaction.options.getString('battlemetricsid');

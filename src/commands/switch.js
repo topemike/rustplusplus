@@ -80,19 +80,21 @@ module.exports = {
                 const image = interaction.options.getString('image');
 
                 let device = InstanceUtils.getSmartDevice(guildId, entityId);
+                /* An alarm or storage monitor id is not a switch */
+                if (device !== null && device.type !== 'switch') device = null;
+                const activeServer = rustplus && instance.serverList[rustplus.serverId] ?
+                    instance.serverList[rustplus.serverId] : null;
                 if (device === null) {
                     isSmartSwitchGroup = true;
-                    for (const groupId in instance.serverList[rustplus.serverId].switchGroups) {
-                        if (groupId === entityId) {
-                            device = { type: 'switchGroup', serverId: rustplus.serverId };
-                            break;
-                        }
+                    /* Groups are looked up on the connected server only */
+                    if (activeServer && activeServer.switchGroups.hasOwnProperty(entityId)) {
+                        device = { type: 'switchGroup', serverId: rustplus.serverId };
                     }
 
                     if (device === null) {
                         const str = client.intlGet(guildId, 'invalidId', { id: entityId });
                         await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str,
-                            instance.serverList[rustplus.serverId].title));
+                            activeServer ? activeServer.title : null));
                         client.log(client.intlGet(null, 'warningCap'), str);
                         return;
                     }

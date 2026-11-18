@@ -26,6 +26,17 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
 const PermissionHandler = require('../handlers/permissionHandler.js');
 
+/* After the #information (or every) channel was emptied: the upkeep and market boards are sent again */
+function forgetBoards(client, guildId) {
+	const instance = client.getInstance(guildId);
+	if (instance.informationMessageId) instance.informationMessageId.upkeep = null;
+	client.setInstance(guildId, instance);
+	try { require('../handlers/upkeepBoardHandler.js').resetCache(guildId); }
+	catch (e) { /* not critical */ }
+	try { require('../handlers/marketHandler.js').resetCache(guildId); }
+	catch (e) { /* not critical */ }
+}
+
 module.exports = {
 	name: 'reset',
 
@@ -96,6 +107,7 @@ module.exports = {
 				await DiscordTools.clearTextChannel(guild.id, instance.channelId.switches, 100);
 				await DiscordTools.clearTextChannel(guild.id, instance.channelId.switchGroups, 100);
 				await DiscordTools.clearTextChannel(guild.id, instance.channelId.storageMonitors, 100);
+				forgetBoards(client, guild.id);
 
 				const rustplus = client.rustplusInstances[guild.id];
 				if (rustplus && rustplus.isOperational) {
@@ -127,6 +139,7 @@ module.exports = {
 
 			case 'information': {
 				await DiscordTools.clearTextChannel(guild.id, instance.channelId.information, 100);
+				forgetBoards(client, guild.id);
 
 				const rustplus = client.rustplusInstances[guild.id];
 				if (rustplus && rustplus.isOperational) {
