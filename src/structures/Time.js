@@ -91,7 +91,8 @@ class Time {
             Object.keys(this.timeTillNight).length !== 0;
     }
 
-    updateTime(time) {
+    updateTime(time, now = Date.now()) {
+        this.measureSpeed(time, now);
         this.dayLengthMinutes = time.dayLengthMinutes;
         this.timeScale = time.timeScale;
         this.sunrise = time.sunrise;
@@ -99,7 +100,67 @@ class Time {
         this.time = time.time;
     }
 
+    /*
+     *  How fast the in-game clock goes, measured with the real clock, separately by day and by night
+     *  (many servers have shorter nights). Smoothed, kept up to date all the time and saved per server.
+     *  Samples that cross sunrise/sunset or jump (skip-night plugins, restarts) are not used.
+     */
+    measureSpeed(time, now) {
+        const last = this._lastSample;
+        this._lastSample = { t: now, time: time.time };
+        if (!last) return;
+        const seconds = (now - last.t) / 1000;
+        let hours = time.time - last.time;
+        if (hours < 0) hours += 24;
+        if (seconds < 5 || seconds > 120 || hours <= 0 || hours > 1) return;
+        const wasDay = last.time >= this.sunrise && last.time < this.sunset;
+        const isDay = time.time >= time.sunrise && time.time < time.sunset;
+        if (wasDay !== isDay) return;
+
+        if (!this._speed) this._speed = this.loadSpeed();
+        const key = isDay ? 'day' : 'night';
+        const rate = hours / seconds;                           /* in-game hours per real second */
+        const old = this._speed[key];
+        this._speed[key] = old ? old * 0.9 + rate * 0.1 : rate;
+        if (!this._speedSavedAt || now - this._speedSavedAt > 5 * 60 * 1000) {
+            this._speedSavedAt = now;
+            try {
+                const instance = this.client.getInstance(this.rustplus.guildId);
+                const server = instance.serverList[this.rustplus.serverId];
+                if (server) {
+                    server.daySpeed = this._speed;
+                    this.client.setInstance(this.rustplus.guildId, instance);
+                }
+            }
+            catch (e) { /* kept in memory */ }
+        }
+    }
+
+    loadSpeed() {
+        try {
+            const instance = this.client.getInstance(this.rustplus.guildId);
+            const server = instance.serverList[this.rustplus.serverId];
+            if (server && server.daySpeed) return { day: server.daySpeed.day || null, night: server.daySpeed.night || null };
+        }
+        catch (e) { /* none saved */ }
+        return { day: null, night: null };
+    }
+
+    /* Real seconds until sunset (by day) or sunrise (by night), or null while it is not known */
+    secondsTillDayOrNight() {
+        if (!this._speed) this._speed = this.loadSpeed();
+        const rate = this.isDay() ? this._speed.day : this._speed.night;
+        if (!rate) return null;
+        let hours = this.isDay() ? this.sunset - this.time : this.sunrise - this.time;
+        if (hours < 0) hours += 24;
+        return hours / rate;
+    }
+
     getTimeTillDayOrNight(ignore = '') {
+        /* Measured speed of the in-game clock (always up to date); the old table only as a fallback */
+        const seconds = this.secondsTillDayOrNight();
+        if (seconds !== null) return TimeLib.secondsToFullScale(seconds, ignore);
+
         if (!this.timeTillActive) {
             return null;
         }
