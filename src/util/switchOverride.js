@@ -81,5 +81,80 @@ module.exports = {
 
         delete switchContent.manualOverride;
         return false;
-    }
+    },
+
+    /* ---------------------------------------------------------------------
+     *  Recognising the bot's own changes when the game echoes them back.
+     * --------------------------------------------------------------------- */
+
+    /* The bot is changing this switch (kept even if Rust+ times out, so the late echo is
+       still recognised). onConfirm: fields to set on the switch when the echo confirms it. */
+    markBotChange: function (rustplus, entityId, value, onConfirm = null) {
+        if (!rustplus) return;
+        if (!rustplus.botSwitchChanges) rustplus.botSwitchChanges = {};
+        rustplus.botSwitchChanges[`${entityId}`] = { value: value, at: Date.now(), onConfirm: onConfirm };
+    },
+
+    /* An alarm action on this switch is under way (or waiting for its late echo): automatic modes wait */
+    raidChangeInProgress: function (rustplus, entityId, now = Date.now()) {
+        const change = rustplus && rustplus.botSwitchChanges ? rustplus.botSwitchChanges[`${entityId}`] : null;
+        return !!change && !!change.onConfirm && now - change.at < module.exports.BOT_CHANGE_TTL_MS;
+    },
+
+    /* The change was confirmed by Rust+: drop the confirm-on-echo part (the echo is still the bot's) */
+    clearBotChangeConfirm: function (rustplus, entityId) {
+        const change = rustplus && rustplus.botSwitchChanges ? rustplus.botSwitchChanges[`${entityId}`] : null;
+        if (change) change.onConfirm = null;
+    },
+
+    /* Entries of rustplus.interactionSwitches (pushed by whoever changes a switch) that never got an
+       echo (e.g. set to the value it already had) expire, so they can not swallow a real in-game flip */
+    sweepInteractions: function (rustplus, now = Date.now()) {
+        if (!rustplus || !Array.isArray(rustplus.interactionSwitches)) return;
+        if (!rustplus.interactionSeenAt) rustplus.interactionSeenAt = {};
+        const seen = rustplus.interactionSeenAt;
+        const ids = new Set(rustplus.interactionSwitches.map(e => `${e}`));
+        for (const id of Object.keys(seen)) if (!ids.has(id)) delete seen[id];
+        const expired = [];
+        for (const id of ids) {
+            if (!seen.hasOwnProperty(id)) seen[id] = now;
+            else if (now - seen[id] >= module.exports.INTERACTION_TTL_MS) expired.push(id);
+        }
+        if (expired.length > 0) {
+            rustplus.interactionSwitches = rustplus.interactionSwitches.filter(e => !expired.includes(`${e}`));
+            for (const id of expired) delete seen[id];
+        }
+        if (rustplus.botSwitchChanges) {
+            for (const [id, c] of Object.entries(rustplus.botSwitchChanges)) {
+                if (now - c.at >= module.exports.BOT_CHANGE_TTL_MS) delete rustplus.botSwitchChanges[id];
+            }
+        }
+    },
+
+    /**
+     *  An entityChanged broadcast of a switch: is it the echo of the bot's own change?
+     *  Consumes the matching marker. Returns null (not the bot's) or { onConfirm }.
+     */
+    takeBotEcho: function (rustplus, entityId, value, switchContent, now = Date.now()) {
+        const id = `${entityId}`;
+        let result = null;
+        const change = rustplus.botSwitchChanges ? rustplus.botSwitchChanges[id] : null;
+        if (change) {
+            delete rustplus.botSwitchChanges[id];
+            if (change.value === value && now - change.at < module.exports.BOT_CHANGE_TTL_MS) {
+                result = { onConfirm: change.onConfirm };
+            }
+        }
+        if (Array.isArray(rustplus.interactionSwitches) &&
+            rustplus.interactionSwitches.some(e => `${e}` === id)) {
+            rustplus.interactionSwitches = rustplus.interactionSwitches.filter(e => `${e}` !== id);
+            if (rustplus.interactionSeenAt) delete rustplus.interactionSeenAt[id];
+            /* The bot stores the value it asks for before asking: a different value is a person */
+            if (!result && switchContent && switchContent.active === value) result = { onConfirm: null };
+        }
+        return result;
+    },
+
+    INTERACTION_TTL_MS: 10 * 1000,
+    BOT_CHANGE_TTL_MS: 30 * 1000
 };

@@ -24,6 +24,18 @@ const Map = require('../util/map.js');
 const Proximity = require('../util/proximity.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const Timer = require('../util/timer');
+const SwitchTimers = require('../util/switchTimers.js');
+
+/* A failing Discord update must not stop the switch checks */
+async function safe(client, promise) {
+    try {
+        return await promise;
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Smart Switch Discord update failed: ${e}`, 'error');
+        return null;
+    }
+}
 
 function warnUnknownPositions(rustplus, client, content, state) {
     if (state.unknown.length === 0 || rustplus.proximityUnknownWarned) return;
@@ -40,6 +52,11 @@ module.exports = {
 
         if (!instance.serverList.hasOwnProperty(serverId)) return;
 
+        /* Timed-command timers live on the client (they survive a reconnect) */
+        SwitchTimers.bind(client, rustplus);
+        /* Bot changes that never got an echo do not wait forever */
+        SwitchOverride.sweepInteractions(rustplus);
+
         if (rustplus.smartSwitchIntervalCounter === 29) {
             rustplus.smartSwitchIntervalCounter = 0;
         }
@@ -52,13 +69,15 @@ module.exports = {
         if (rustplus.smartSwitchIntervalCounter === 0) {
             for (const entityId in instance.serverList[serverId].switches) {
                 const info = await rustplus.getEntityInfoAsync(entityId);
+                /* Deleted while waiting for the answer */
+                if (!instance.serverList[serverId].switches.hasOwnProperty(entityId)) continue;
                 if (!(await rustplus.isResponseValid(info))) {
                     if (instance.serverList[serverId].switches[entityId].reachable) {
-                        await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
                         instance.serverList[serverId].switches[entityId].reachable = false;
                         client.setInstance(guildId, instance);
+                        await safe(client, DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId));
 
-                        await DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                        await safe(client, DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId));
                         changedSwitches.push(entityId);
                     }
                 }
@@ -72,7 +91,7 @@ module.exports = {
                         if (realChanged) sw.active = real;
                         client.setInstance(guildId, instance);
 
-                        await DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+                        await safe(client, DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId));
                         changedSwitches.push(entityId);
                     }
                 }
@@ -83,7 +102,8 @@ module.exports = {
         if (rustplus.time.isTurnedDay(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
                 /* Held on by an alarm action: automatic modes must not change it */
-                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
+                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock ||
+                SwitchOverride.raidChangeInProgress(rustplus, entityId)) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = true;
                     client.setInstance(guildId, instance);
@@ -139,7 +159,8 @@ module.exports = {
         else if (rustplus.time.isTurnedNight(time)) {
             for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
                 /* Held on by an alarm action: automatic modes must not change it */
-                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
+                if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock ||
+                SwitchOverride.raidChangeInProgress(rustplus, entityId)) continue;
                 if (content.autoDayNightOnOff === 1) {
                     instance.serverList[serverId].switches[entityId].active = false;
                     client.setInstance(guildId, instance);
@@ -195,7 +216,8 @@ module.exports = {
 
         for (const [entityId, content] of Object.entries(instance.serverList[serverId].switches)) {
             /* Held on by an alarm action: automatic modes must not change it */
-            if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock) continue;
+            if ((content.holdUntil && Date.now() < content.holdUntil) || content.raidLock ||
+                SwitchOverride.raidChangeInProgress(rustplus, entityId)) continue;
             /* Not answering: the check every 5 minutes marks it reachable again, then it is set */
             if (content.reachable === false) continue;
             if (content.autoDayNightOnOff === 3) { /* ALWAYS ON: what the Discord menu says */
@@ -450,8 +472,13 @@ module.exports = {
             client, guildId, serverId, changedSwitches);
 
         for (let groupId of groupsId) {
-            await DiscordMessages.sendSmartSwitchGroupMessage(guildId, serverId, groupId);
+            await safe(client, DiscordMessages.sendSmartSwitchGroupMessage(guildId, serverId, groupId));
         }
+    },
+
+    /* Cancels the pending timed command of a switch (entity id) or group (group id) */
+    clearPendingTimer: function (client, guildId, key) {
+        return SwitchTimers.clear(client, guildId, key);
     },
 
     smartSwitchCommandHandler: async function (rustplus, client, command, callerSteamId = null) {
@@ -590,10 +617,7 @@ module.exports = {
             return true;
         }
 
-        if (rustplus.currentSwitchTimeouts.hasOwnProperty(entityId)) {
-            clearTimeout(rustplus.currentSwitchTimeouts[entityId]);
-            delete rustplus.currentSwitchTimeouts[entityId];
-        }
+        SwitchTimers.clear(client, guildId, entityId);
 
         const timeSeconds = Timer.getSecondsFromStringTime(rest);
 
@@ -601,9 +625,10 @@ module.exports = {
             value: active
         }));
 
-        module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, active);
-
-        if (!switches[entityId].reachable) return true;
+        /* Only when the order was carried out: otherwise the timer would undo something that never
+           happened (the "no communication" message was already sent) */
+        const done = await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, active);
+        if (!done) return true;
 
         let str = client.intlGet(guildId, 'deviceWasTurnedOnOff', {
             device: switches[entityId].name,
@@ -625,10 +650,11 @@ module.exports = {
                 time: time
             });
 
-        rustplus.currentSwitchTimeouts[entityId] = setTimeout(async function () {
+        /* Kept on the client: when the time is up the live connection is used (also after a reconnect) */
+        SwitchTimers.arm(client, guildId, serverId, entityId, timeSeconds * 1000, async function (rustplus) {
             const instance = client.getInstance(guildId);
-            if (!instance.serverList[serverId].switches.hasOwnProperty(entityId)) return;
-            delete rustplus.currentSwitchTimeouts[entityId];
+            if (!instance.serverList.hasOwnProperty(serverId) ||
+                !instance.serverList[serverId].switches.hasOwnProperty(entityId)) return;
             /* A raid took it over meanwhile: the raid decides now */
             if (instance.serverList[serverId].switches[entityId].raidLock) return;
 
@@ -642,7 +668,8 @@ module.exports = {
                 return;
             }
 
-            await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, !active, false);
+            const turned = await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, !active, false);
+            if (!turned) return;   /* "no communication" was already said */
 
             const str = client.intlGet(guildId, 'automaticallyTurningBackOnOff', {
                 device: instance.serverList[serverId].switches[entityId].name,
@@ -650,7 +677,7 @@ module.exports = {
             });
 
             rustplus.sendInGameMessage(str);
-        }, timeSeconds * 1000);
+        }, `${switches[entityId].name} (${entityCommand})`);
 
         rustplus.sendInGameMessage(str);
         return true;
@@ -663,6 +690,8 @@ module.exports = {
         const switches = instance.serverList[serverId].switches;
 
         const prevActive = switches[entityId].active;
+        const prevState = {};
+        for (const k of ['raidLock', 'holdUntil', 'manualOverride', 'orderAt']) prevState[k] = switches[entityId][k];
         switches[entityId].active = active;
         delete switches[entityId].raidLock;     /* an order: the raid lock ends */
         SwitchOverride.setManual(switches[entityId], active, byPerson);
@@ -680,6 +709,11 @@ module.exports = {
             }
             switches[entityId].reachable = false;
             switches[entityId].active = prevActive;
+            /* Not carried out: what was there before (raid lock, override...) stays */
+            for (const [k, v] of Object.entries(prevState)) {
+                if (v === undefined) delete switches[entityId][k];
+                else switches[entityId][k] = v;
+            }
 
             rustplus.interactionSwitches = rustplus.interactionSwitches.filter(e => e !== entityId);
         }
@@ -690,5 +724,6 @@ module.exports = {
 
         DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
         SmartSwitchGroupHandler.updateSwitchGroupIfContainSwitch(client, guildId, serverId, entityId);
+        return !!switches[entityId].reachable;
     },
 }

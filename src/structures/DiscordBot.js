@@ -317,6 +317,8 @@ class DiscordBot extends Discord.Client {
         }
 
         let rustplus = new RustPlus(guildId, serverIp, appPort, steamId, playerToken);
+        /* Timed-command timers are kept per Discord server: they survive the reconnect */
+        require('../util/switchTimers.js').bind(this, rustplus);
 
         /* Add rustplus instance to Object */
         this.rustplusInstances[guildId] = rustplus;
