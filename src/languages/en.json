@@ -1029,5 +1029,6 @@
     "proximityNoLocation": "No location saved: stand next to it and write {command} here",
     "proximityStatus": "Location {location}. {details}",
     "smartSwitchCommandUsage": "Use: {command} on | off | status | here, optionally with a time: {command} on 2m",
-    "leaderNotConnected": "The bot can't pass the leadership now: the current leader is not connected through the bot. Try again in a minute."
+    "leaderNotConnected": "The bot can't pass the leadership now: the current leader is not connected through the bot. Try again in a minute.",
+    "deepSeaFixedDetectedThree": "It stayed closed the same time three times in a row ({time}): this server has a fixed cycle. From now on I predict every opening too, no need to mark it."
 }

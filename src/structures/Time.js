@@ -92,6 +92,9 @@ class Time {
     }
 
     updateTime(time, now = Date.now()) {
+        /* When the in-game clock last moved (a server with time progression turned off never does) */
+        if (this._advancedAt === undefined || time.time !== this.time) this._advancedAt = now;
+        this._updatedAt = now;
         this.measureSpeed(time, now);
         this.dayLengthMinutes = time.dayLengthMinutes;
         this.timeScale = time.timeScale;
@@ -147,7 +150,13 @@ class Time {
     }
 
     /* Real seconds until sunset (by day) or sunrise (by night), or null while it is not known */
+    isTimeStopped() {
+        if (this._advancedAt === undefined || this._updatedAt === undefined) return false;
+        return (this._updatedAt - this._advancedAt) > Time.STOPPED_AFTER_MS;
+    }
+
     secondsTillDayOrNight() {
+        if (this.isTimeStopped()) return null;     /* the clock does not move: no day/night change */
         if (!this._speed) this._speed = this.loadSpeed();
         const rate = this.isDay() ? this._speed.day : this._speed.night;
         if (!rate) return null;
@@ -160,6 +169,7 @@ class Time {
         /* Measured speed of the in-game clock (always up to date); the old table only as a fallback */
         const seconds = this.secondsTillDayOrNight();
         if (seconds !== null) return TimeLib.secondsToFullScale(seconds, ignore);
+        if (this.isTimeStopped()) return null;
 
         if (!this.timeTillActive) {
             return null;
@@ -182,5 +192,8 @@ class Time {
     }
 
 }
+
+/* In-game clock unchanged for longer than this (real time): time progression is off */
+Time.STOPPED_AFTER_MS = 5 * 60 * 1000;
 
 module.exports = Time;

@@ -65,11 +65,23 @@ async function messageBroadcast(rustplus, client, message) {
 }
 
 async function messageBroadcastTeamChanged(rustplus, client, message) {
-    if (!rustplus.team) return;     /* no team information yet: the next poll creates it */
-    TeamHandler.handler(rustplus, client, message.broadcast.teamChanged.teamInfo);
-    const changed = rustplus.team.isLeaderSteamIdChanged(message.broadcast.teamChanged.teamInfo);
-    rustplus.team.updateTeam(message.broadcast.teamChanged.teamInfo);
-    if (changed) rustplus.updateLeaderRustPlusLiteInstance();
+    const teamInfo = message.broadcast.teamChanged.teamInfo;
+    /* Remembered at once: a poll whose team request was sent before this message carries an older
+       team and is not processed (it would announce a false connect/disconnect pair). */
+    rustplus.teamChangedSeq = (rustplus.teamChangedSeq || 0) + 1;
+    rustplus.lastTeamChangedAt = Date.now();
+    try {
+        await TeamHandler.enqueue(rustplus, async () => {
+            if (!rustplus.team) return;     /* no team information yet: the next poll creates it */
+            await TeamHandler.handler(rustplus, client, teamInfo);
+            const changed = rustplus.team.isLeaderSteamIdChanged(teamInfo);
+            rustplus.team.updateTeam(teamInfo);
+            if (changed) rustplus.updateLeaderRustPlusLiteInstance();
+        });
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Team changed: ${e}`, 'error');
+    }
 }
 
 async function messageBroadcastTeamMessage(rustplus, client, message) {

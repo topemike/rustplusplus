@@ -27,14 +27,24 @@ module.exports = {
         await module.exports.checkChanges(rustplus, client, teamInfo);
     },
 
+    /* Team changes are processed one at a time per connection (poll and the game's "team changed"
+       message must never interleave: the notices are worked out against the team as it was before
+       the change, and the team is updated right after). */
+    enqueue: function (rustplus, fn) {
+        const previous = rustplus.teamQueue || Promise.resolve();
+        const next = previous.catch(() => { }).then(fn);
+        rustplus.teamQueue = next.catch(() => { });
+        return next;
+    },
+
     checkChanges: async function (rustplus, client, teamInfo) {
         let instance = client.getInstance(rustplus.guildId);
         const guildId = rustplus.guildId;
         const serverId = rustplus.serverId;
         const server = instance.serverList[serverId];
 
-        if (rustplus.team.isLeaderSteamIdChanged(teamInfo)) return;
-
+        /* A leader change is handled by Team.updateTeam: the joins, leaves, deaths and connections of
+           the same update are still announced. */
         const newPlayers = rustplus.team.getNewPlayers(teamInfo);
         const leftPlayers = rustplus.team.getLeftPlayers(teamInfo);
 
@@ -62,10 +72,16 @@ module.exports = {
             return true;
         };
 
+        /* Names taken before any await (the team may already be updated when the loop resumes) */
+        const leftNames = {};
+        for (const steamId of leftPlayers) {
+            const player = rustplus.team.getPlayer(steamId);
+            leftNames[steamId] = player ? player.name : steamId;
+        }
+
         for (const steamId of leftPlayers) {
             if (!once('member', steamId, false)) continue;
-            const player = rustplus.team.getPlayer(steamId);
-            const str = client.intlGet(guildId, 'playerLeftTheTeam', { name: player.name });
+            const str = client.intlGet(guildId, 'playerLeftTheTeam', { name: leftNames[steamId] });
             await DiscordMessages.sendActivityNotificationMessage(
                 guildId, serverId, Constants.COLOR_GREY, str, steamId);
             if (instance.generalSettings.connectionNotify) await rustplus.sendInGameMessage(str);

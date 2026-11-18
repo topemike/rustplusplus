@@ -38,15 +38,60 @@ module.exports = {
         return bytes >= 60 && bytes <= 64;
     },
 
+    /* Name without the tracker's clan tag (the current one, or the one the names were made with) */
+    baseName: function (name, ...clanTags) {
+        const n = `${name || ''}`;
+        for (const clanTag of clanTags) {
+            if (clanTag && n.startsWith(`${clanTag} `)) return n.slice(`${clanTag} `.length);
+        }
+        return n;
+    },
+
+    /* One entry per BattleMetrics player: the same player added twice (by name and by Steam ID) is
+       merged into the first entry (which gets the Steam ID). Returns true if something changed. */
+    mergeDuplicatePlayers: function (tracker) {
+        if (!tracker || !Array.isArray(tracker.players)) return false;
+        const kept = [];
+        let changed = false;
+        for (const player of tracker.players) {
+            const target = player.playerId ? kept.find(e => e.playerId && `${e.playerId}` === `${player.playerId}`) : null;
+            /* Two different Steam accounts cannot be the same BattleMetrics player: leave them */
+            if (target && !(target.steamId && player.steamId && `${target.steamId}` !== `${player.steamId}`)) {
+                if (!target.steamId && player.steamId) target.steamId = player.steamId;
+                if ((!target.name || target.name === '-') && player.name && player.name !== '-') {
+                    target.name = player.name;
+                }
+                changed = true;
+                continue;
+            }
+            kept.push(player);
+        }
+        if (changed) tracker.players = kept;
+        return changed;
+    },
+
     /* Returns true if some player of the tracker got its BattleMetrics id (or its name) now */
     findMissingPlayerIds: async function (client, tracker, bmInstance, now = Date.now()) {
         let changed = false;
         const tag = tracker.clanTag ? `${tracker.clanTag} ` : '';
+        const bmPlayers = (bmInstance && bmInstance.players) || {};
         for (const player of tracker.players) {
-            if (player.playerId || !player.steamId) continue;
+            const noName = !player.name || player.name === '-';
+
+            if (player.playerId) {
+                /* Added by BattleMetrics id while that player was never seen: take the name when seen */
+                const seen = bmPlayers[player.playerId];
+                if (noName && seen && seen.name) {
+                    player.name = seen.name;
+                    changed = true;
+                }
+                continue;
+            }
+            /* Nothing to look for */
+            if (!player.steamId && noName) continue;
 
             /* No name yet (the Steam profile could not be read when added): try again */
-            if (!player.name || player.name === '-') {
+            if (player.steamId && noName) {
                 if (player.nextSearch && now < player.nextSearch) continue;
                 player.nextSearch = now + SEARCH_INTERVAL_MS;
                 const steamName = await Scrape.scrapeSteamProfileName(client, player.steamId);
@@ -58,7 +103,7 @@ module.exports = {
             const names = [player.name, name];
 
             /* Online now with that name (with the clan tag, as the tracker shows it, or without) */
-            const online = Object.keys(bmInstance.players || {}).find(e => names.includes(bmInstance.players[e].name));
+            const online = Object.keys(bmPlayers).find(e => names.includes(bmPlayers[e].name));
             if (online) {
                 player.playerId = online;
                 delete player.nextSearch;
@@ -78,6 +123,8 @@ module.exports = {
                 changed = true;
             }
         }
+        /* The id found may already belong to another entry of the tracker: merge them */
+        if (module.exports.mergeDuplicatePlayers(tracker)) changed = true;
         return changed;
     },
 
@@ -134,6 +181,8 @@ module.exports = {
 
                 if (!bmInstance || !bmInstance.lastUpdateSuccessful) continue;
 
+                if (module.exports.mergeDuplicatePlayers(content)) client.setInstance(guildId, instance);
+
                 if (firstTime || searchSteamProfiles) {
                     for (const player of content.players) {
                         if (player.steamId === null) continue;
@@ -148,20 +197,30 @@ module.exports = {
                         }
                         if (name === null) continue;
 
-                        name = (content.clanTag !== '' ? `${content.clanTag} ` : '') + `${name}`;
+                        const steamName = `${name}`;
+                        name = (content.clanTag ? `${content.clanTag} ` : '') + steamName;
 
                         if (player.name !== name) {
-                            await module.exports.trackerNewNameDetected(client, guildId, trackerId, battlemetricsId,
-                                player.name, name);
+                            /* Only the clan tag changed (edited in the tracker): not a name change */
+                            const oldBase = module.exports.baseName(player.name, content.namesClanTag,
+                                content.clanTag);
+                            const known = player.name && player.name !== '-';
+                            if (known && oldBase !== steamName) {
+                                await module.exports.trackerNewNameDetected(client, guildId, trackerId,
+                                    battlemetricsId, player.name, name);
+                            }
 
                             /* Keep the BattleMetrics id found when the player was added unless the new
                                name matches someone online right now */
                             const newPlayerId = Object.keys(bmInstance.players)
-                                .find(e => bmInstance.players[e]['name'] === name);
+                                .find(e => [name, steamName].includes(bmInstance.players[e]['name']));
                             if (newPlayerId) player.playerId = newPlayerId;
                             player.name = name;
                         }
                     }
+                    /* The tag the names are made with now */
+                    content.namesClanTag = content.clanTag || '';
+                    module.exports.mergeDuplicatePlayers(content);
 
                     client.setInstance(guildId, instance);
 
@@ -178,22 +237,38 @@ module.exports = {
                     await DiscordMessages.sendTrackerMessage(guildId, trackerId);
                 }
 
-                const trackerPlayerIds = content.players.map(e => e.playerId);
+                /* Each BattleMetrics player once (an entry per player: one notice each) */
+                const trackerPlayerIds = Array.from(new Set(content.players.map(e => e.playerId)
+                    .filter(e => e !== null && e !== undefined && e !== '')));
+                const entryOf = (playerId) => content.players.find(e => e.playerId === playerId);
 
-                /* Check if Player just changed name */
-                for (const player of bmInstance.nameChangedPlayers.filter(e => trackerPlayerIds.includes(e.id))) {
-                    for (const playerT of content.players) {
-                        if (playerT.playerId !== player.id) continue;
+                /* Check if Player just changed name: announced and stored (compared without the clan tag) */
+                let namesChanged = false;
+                for (const change of bmInstance.nameChangedPlayers.filter(e => trackerPlayerIds.includes(e.id))) {
+                    const playerT = entryOf(change.id);
+                    if (!playerT) continue;
 
+                    const tags = [content.namesClanTag, content.clanTag];
+                    const newBase = module.exports.baseName(change.to, ...tags);
+                    const oldName = playerT.name;
+                    const tagged = content.clanTag && `${oldName || ''}`.startsWith(`${content.clanTag} `);
+                    const newName = tagged ? `${content.clanTag} ${newBase}` : `${change.to}`;
+                    if (oldName === newName) continue;
+
+                    playerT.name = newName;
+                    namesChanged = true;
+                    if (oldName && oldName !== '-' && module.exports.baseName(oldName, ...tags) !== newBase) {
                         await module.exports.trackerNewNameDetected(client, guildId, trackerId, battlemetricsId,
-                            player.from, player.to);
+                            oldName, newName);
                     }
                 }
+                if (namesChanged) client.setInstance(guildId, instance);
 
                 /* Check if Player just came online */
                 for (const playerId of trackerPlayerIds.filter(e => bmInstance.newPlayers.includes(e))) {
-                    for (const player of content.players) {
-                        if (player.playerId !== playerId) continue;
+                    {
+                        const player = entryOf(playerId);
+                        if (!player) continue;
 
                         const str = client.intlGet(guildId, 'playerJustConnectedTracker', {
                             name: player.name,
@@ -210,8 +285,9 @@ module.exports = {
 
                 /* Check if Player just came online */
                 for (const playerId of trackerPlayerIds.filter(e => bmInstance.loginPlayers.includes(e))) {
-                    for (const player of content.players) {
-                        if (player.playerId !== playerId) continue;
+                    {
+                        const player = entryOf(playerId);
+                        if (!player) continue;
 
                         const str = client.intlGet(guildId, 'playerJustConnectedTracker', {
                             name: player.name,
@@ -228,8 +304,9 @@ module.exports = {
 
                 /* Check if Player just went offline */
                 for (const playerId of trackerPlayerIds.filter(e => bmInstance.logoutPlayers.includes(e))) {
-                    for (const player of content.players) {
-                        if (player.playerId !== playerId) continue;
+                    {
+                        const player = entryOf(playerId);
+                        if (!player) continue;
 
                         const str = client.intlGet(guildId, 'playerJustDisconnectedTracker', {
                             name: player.name,
@@ -459,7 +536,7 @@ module.exports = {
                 let playerCounter = 0;
                 for (const playerId of playerIds) {
                     playerCounter += 1;
-                    const name = bmInstance.players[playerId]['name'].replace('[', '(').replace(']', ')');
+                    const name = bmInstance.players[playerId]['name'].replace(/\[/g, '(').replace(/\]/g, ')');
                     const playerStr = `[${name}](${Constants.BATTLEMETRICS_PROFILE_URL + `${playerId}`})\n`;
 
                     if (totalCharacters + playerStr.length >= Constants.EMBED_MAX_TOTAL_CHARACTERS) {
@@ -513,7 +590,7 @@ module.exports = {
                 let playerCounter = 0;
                 for (const playerId of bmInstance.logoutPlayers) {
                     playerCounter += 1;
-                    const name = bmInstance.players[playerId]['name'].replace('[', '(').replace(']', ')');
+                    const name = bmInstance.players[playerId]['name'].replace(/\[/g, '(').replace(/\]/g, ')');
                     const playerStr = `[${name}](${Constants.BATTLEMETRICS_PROFILE_URL + `${playerId}`})\n`;
 
                     if (totalCharacters + playerStr.length >= Constants.EMBED_MAX_TOTAL_CHARACTERS) {

@@ -23,7 +23,7 @@ const Axios = require('axios');
 const Client = require('../../index.ts');
 const Config = require('../../config');
 const RandomUsernames = require('../staticFiles/RandomUsernames.json');
-const Utils = require = require('../util/utils.js');
+const Utils = require('../util/utils.js');
 
 const SERVER_LOG_SIZE = 1000;
 const CONNECTION_LOG_SIZE = 1000;
@@ -340,7 +340,8 @@ class Battlemetrics {
 
         let isDifferent = false;
         if (Array.isArray(value1) || Array.isArray(value2)) {
-            if (value1.length != value2.length || !value1.every(function (u, i) { return u === value2[i] })) {
+            if (!Array.isArray(value1) || !Array.isArray(value2) || value1.length != value2.length ||
+                !value1.every(function (u, i) { return u === value2[i] })) {
                 isDifferent = true;
             }
         }
@@ -494,6 +495,12 @@ class Battlemetrics {
             return false;
         }
 
+        /* The first evaluation that gets data (also when the setup failed and the data came later,
+           e.g. BattleMetrics down or 429 at startup) only learns the current state: nobody is a new
+           player that just connected and no server parameter "changed" from nothing. */
+        if (!this._evaluatedOnce) firstTime = true;
+        this._evaluatedOnce = true;
+
         this.lastUpdateSuccessful = true;
         this.data = data;
 
@@ -623,9 +630,10 @@ class Battlemetrics {
                 this.players[entity.id]['connectionLog'] = [];
                 this.players[entity.id]['logoutDate'] = null;
 
-                if (!firstTime) this.#updateConnectionLog(entity.id, { type: 0, time: time }); /* 0 = Login event */
-
-                this.newPlayers.push(entity.id);
+                if (!firstTime) {
+                    this.#updateConnectionLog(entity.id, { type: 0, time: time }); /* 0 = Login event */
+                    this.newPlayers.push(entity.id);
+                }
             }
             else {  /* Existing Player */
                 /* From Battlemetrics */
@@ -647,8 +655,8 @@ class Battlemetrics {
                 this.players[entity.id]['positiveMatch'] = entity.attributes.positiveMatch;
                 this.players[entity.id]['createdAt'] = entity.attributes.createdAt;
                 this.players[entity.id]['updatedAt'] = entity.attributes.updatedAt;
-                const firstTime = entity.meta.metadata.find(e => e.key === 'firstTime');
-                if (firstTime) this.players[entity.id]['firstTime'] = firstTime.value;
+                const firstTimeMeta = entity.meta.metadata.find(e => e.key === 'firstTime');
+                if (firstTimeMeta) this.players[entity.id]['firstTime'] = firstTimeMeta.value;
 
                 /* Other */
                 this.players[entity.id]['url'] = this.GET_BATTLEMETRICS_PLAYER_URL(entity.id);
