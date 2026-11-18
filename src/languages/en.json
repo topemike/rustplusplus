@@ -1030,5 +1030,12 @@
     "proximityStatus": "Location {location}. {details}",
     "smartSwitchCommandUsage": "Use: {command} on | off | status | here, optionally with a time: {command} on 2m",
     "leaderNotConnected": "The bot can't pass the leadership now: the current leader is not connected through the bot. Try again in a minute.",
-    "deepSeaFixedDetectedThree": "It stayed closed the same time three times in a row ({time}): this server has a fixed cycle. From now on I predict every opening too, no need to mark it."
+    "deepSeaFixedDetectedThree": "It stayed closed the same time three times in a row ({time}): this server has a fixed cycle. From now on I predict every opening too, no need to mark it.",
+    "storageMonitorNoDataYet": "No data from this Storage Monitor yet: it will show up after the next reading.",
+    "userBlacklistedReply": "You are on the blacklist of this bot.",
+    "battlemetricsIdInvalid": "BattleMetrics id {id} was not found: nothing was changed.",
+    "battlemetricsIdSaved": "BattleMetrics id saved: {id}",
+    "commandsVoiceBotNotInVoice": "The bot is not in a voice channel.",
+    "battlemetricsTokenNotConfigured": "BattleMetrics token not configured.",
+    "facepunchNoLongerSendsNote": "⚠️ Facepunch no longer sends this to Rust+ (since Aug 2026): it will only work again if they bring it back."
 }

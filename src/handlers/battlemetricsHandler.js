@@ -635,6 +635,7 @@ module.exports = {
 
     trackerNewNameDetected: async function (client, guildId, trackerId, battlemetricsId, oldName, newName) {
         const instance = client.getInstance(guildId);
+        if (instance.generalSettings.battlemetricsTrackerNameChanges === false) return;
         const trackerName = instance.trackers[trackerId].name;
 
         const title = client.intlGet(guildId, 'battlemetricsTrackerPlayerNameChanged');

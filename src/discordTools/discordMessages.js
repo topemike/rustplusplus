@@ -68,7 +68,7 @@ module.exports = {
         const message = await module.exports.sendMessage(guildId, content, server.messageId,
             instance.channelId.servers, interaction);
 
-        if (!interaction) {
+        if (!interaction && message && message.id) {
             instance.serverList[serverId].messageId = message.id;
             Client.client.setInstance(guildId, instance);
         }
@@ -86,7 +86,7 @@ module.exports = {
         const message = await module.exports.sendMessage(guildId, content, tracker.messageId,
             instance.channelId.trackers, interaction);
 
-        if (!interaction) {
+        if (!interaction && message && message.id) {
             instance.trackers[trackerId].messageId = message.id;
             Client.client.setInstance(guildId, instance);
         }
@@ -112,7 +112,7 @@ module.exports = {
         const message = await module.exports.sendMessage(guildId, content, entity.messageId,
             instance.channelId.switches, interaction);
 
-        if (!interaction) {
+        if (!interaction && message && message.id) {
             instance.serverList[serverId].switches[entityId].messageId = message.id;
             Client.client.setInstance(guildId, instance);
         }
@@ -134,7 +134,7 @@ module.exports = {
         const message = await module.exports.sendMessage(guildId, content, entity.messageId,
             instance.channelId.alarms, interaction);
 
-        if (!interaction) {
+        if (!interaction && message && message.id) {
             instance.serverList[serverId].alarms[entityId].messageId = message.id;
             Client.client.setInstance(guildId, instance);
         }
@@ -161,7 +161,7 @@ module.exports = {
         const message = await module.exports.sendMessage(guildId, content, entity.messageId,
             instance.channelId.storageMonitors, interaction);
 
-        if (!interaction) {
+        if (!interaction && message && message.id) {
             instance.serverList[serverId].storageMonitors[entityId].messageId = message.id;
             Client.client.setInstance(guildId, instance);
         }
@@ -181,7 +181,7 @@ module.exports = {
         const message = await module.exports.sendMessage(guildId, content, group.messageId,
             instance.channelId.switchGroups, interaction);
 
-        if (!interaction) {
+        if (!interaction && message && message.id) {
             instance.serverList[serverId].switchGroups[groupId].messageId = message.id;
             Client.client.setInstance(guildId, instance);
         }
@@ -280,15 +280,17 @@ module.exports = {
         await module.exports.sendMessage(guildId, content, null, instance.channelId.base || instance.channelId.activity);
     },
 
-    sendSmartAlarmTriggerMessage: async function (guildId, serverId, entityId) {
+    /* everyone: null = the alarm's own @everyone setting; true/false forces it (fcmAlarmNotificationEveryone) */
+    sendSmartAlarmTriggerMessage: async function (guildId, serverId, entityId, everyone = null) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];
+        const mention = everyone === null ? entity.everyone : everyone;
 
         const content = {
             embeds: [await DiscordEmbeds.getAlarmEmbed(guildId, serverId, entityId)],
             files: [new Discord.AttachmentBuilder(
                 Path.join(__dirname, '..', `resources/images/electrics/${entity.image}`))],
-            content: entity.everyone ? '@everyone' : ''
+            content: mention ? '@everyone' : ''
         }
 
         /* Base alarms go to #base (#activity if it does not exist) */
@@ -419,7 +421,7 @@ module.exports = {
         const message = await module.exports.sendMessage(rustplus.guildId, content,
             instance.informationMessageId.map, instance.channelId.information);
 
-        if (message.id !== instance.informationMessageId.map) {
+        if (message && message.id && message.id !== instance.informationMessageId.map) {
             instance.informationMessageId.map = message.id;
             Client.client.setInstance(rustplus.guildId, instance);
         }
@@ -438,7 +440,7 @@ module.exports = {
         const message = await module.exports.sendMessage(rustplus.guildId, content,
             instance.informationMessageId.server, instance.channelId.information);
 
-        if (message.id !== instance.informationMessageId.server) {
+        if (message && message.id && message.id !== instance.informationMessageId.server) {
             instance.informationMessageId.server = message.id;
             Client.client.setInstance(rustplus.guildId, instance);
         }
@@ -457,7 +459,7 @@ module.exports = {
         const message = await module.exports.sendMessage(rustplus.guildId, content,
             instance.informationMessageId.event, instance.channelId.information);
 
-        if (message.id !== instance.informationMessageId.event) {
+        if (message && message.id && message.id !== instance.informationMessageId.event) {
             instance.informationMessageId.event = message.id;
             Client.client.setInstance(rustplus.guildId, instance);
         }
@@ -476,7 +478,7 @@ module.exports = {
         const message = await module.exports.sendMessage(rustplus.guildId, content,
             instance.informationMessageId.team, instance.channelId.information);
 
-        if (message.id !== instance.informationMessageId.team) {
+        if (message && message.id && message.id !== instance.informationMessageId.team) {
             instance.informationMessageId.team = message.id;
             Client.client.setInstance(rustplus.guildId, instance);
         }
@@ -492,7 +494,7 @@ module.exports = {
         const message = await module.exports.sendMessage(rustplus.guildId, content,
             instance.informationMessageId.battlemetricsPlayers, instance.channelId.information);
 
-        if (message.id !== instance.informationMessageId.battlemetricsPlayers) {
+        if (message && message.id && message.id !== instance.informationMessageId.battlemetricsPlayers) {
             instance.informationMessageId.battlemetricsPlayers = message.id;
             Client.client.setInstance(rustplus.guildId, instance);
         }

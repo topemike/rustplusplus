@@ -484,7 +484,7 @@ async function alarmAlarm(client, guild, title, message, body) {
         instance.generalSettings.fcmAlarmNotificationEnabled) {
         server.alarms[entityId].lastTrigger = Math.floor(new Date() / 1000);
         client.setInstance(guild.id, instance);
-        await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId);
+        await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId, server.alarms[entityId].everyone || instance.generalSettings.fcmAlarmNotificationEveryone);
         client.log(client.intlGet(null, 'infoCap'), `${title}: ${message}`);
     }
 }

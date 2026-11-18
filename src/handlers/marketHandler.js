@@ -274,6 +274,8 @@ module.exports = {
     addToBoard: addToBoard,
     removeEntry: removeEntry,
     updateBoard: updateBoard,
+    /* Forget what was sent (after /reset): the next update re-sends the whole board */
+    resetCache: (guildId) => { delete state[guildId]; },
     getEntryContent: getEntryContent,
     getMark: getMark,
     DEFAULT_BOARD: DEFAULT_BOARD,
