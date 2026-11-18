@@ -24,7 +24,7 @@ const ExtraEvents = require('./ExtraEvents.js');
 const Timer = require('../util/timer');
 
 /* Not one marker of a type in this long since connecting: Rust+ does not send that type */
-const MARKER_TYPE_UNAVAILABLE_MS = 2 * 60 * 60 * 1000;
+const VENDING_CHECK_MS = 5 * 60 * 1000;
 
 class MapMarkers {
     constructor(mapMarkers, rustplus, client) {
@@ -281,9 +281,18 @@ class MapMarkers {
      */
     isTypeUnavailable(type, now = Date.now()) {
         const start = this.getConnectionStart();
-        if (now - start <= MARKER_TYPE_UNAVAILABLE_MS) return false;
-        const lastSeen = this.lastSeenByType[type];
-        return !lastSeen || lastSeen < start;
+        const seenInConnection = (t) => {
+            const lastSeen = this.lastSeenByType[t];
+            return !!lastSeen && lastSeen >= start;
+        };
+        if (seenInConnection(type)) return false;
+
+        /* Vending machines are always on the map: if they come, Rust+ sends the event markers normally
+           (cargo or heli may simply not be out yet). If none came after a few minutes, the markers were
+           cut by Facepunch and the other event types are not sent either. */
+        const vending = this.types.VendingMachine;
+        if (seenInConnection(vending)) return false;
+        return now - start > VENDING_CHECK_MS;
     }
 
     recordSeenTypes(mapMarkers, now = Date.now()) {
