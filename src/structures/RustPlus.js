@@ -2572,8 +2572,19 @@ class RustPlus extends RustPlusLib {
                 this.timers[id] = {
                     timer: new Timer.timer(
                         () => {
-                            this.sendInGameMessage(Client.client.intlGet(this.guildId, 'timer',
-                                { message: message }), 'TIMER');
+                            const text = Client.client.intlGet(this.guildId, 'timer', { message: message });
+                            this.sendInGameMessage(text, 'TIMER');
+                            /* Also in Discord: in the game it is not shown when nobody of the team is
+                               connected (or the bot is muted in game) */
+                            try {
+                                const instance = Client.client.getInstance(this.guildId);
+                                const channelId = instance.channelId.activity || instance.channelId.teamchat;
+                                if (channelId) {
+                                    DiscordMessages.sendMessage(this.guildId, { content: `⏰ ${text}` }, null, channelId)
+                                        .catch(() => { });
+                                }
+                            }
+                            catch (e) { /* the game message is enough */ }
                             delete this.timers[id]
                         },
                         timeSeconds * 1000),
