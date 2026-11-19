@@ -120,5 +120,7 @@ module.exports = {
     getTcList: getTcList,
     getContent: getContent,
     hoursMinutes: hoursMinutes,
+    /* Forget what was sent (after /reset): the next update re-sends the board */
+    resetCache: (guildId) => { delete signatures[guildId]; },
     _reset: () => { for (const k of Object.keys(signatures)) delete signatures[k]; }
 };

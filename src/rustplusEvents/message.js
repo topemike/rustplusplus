@@ -25,6 +25,9 @@ const InGameChatHandler = require('../handlers/inGameChatHandler.js');
 const BaseWatchHandler = require('../handlers/baseWatchHandler.js');
 const RaidHandler = require('../handlers/raidHandler.js');
 const SmartSwitchGroupHandler = require('../handlers/smartSwitchGroupHandler.js');
+const SwitchOverride = require('../util/switchOverride.js');
+const SwitchTimers = require('../util/switchTimers.js');
+const UpkeepClock = require('../util/upkeepClock.js');
 const TeamChatHandler = require("../handlers/teamChatHandler.js");
 const TeamHandler = require('../handlers/teamHandler.js');
 
@@ -65,11 +68,23 @@ async function messageBroadcast(rustplus, client, message) {
 }
 
 async function messageBroadcastTeamChanged(rustplus, client, message) {
-    if (!rustplus.team) return;     /* no team information yet: the next poll creates it */
-    TeamHandler.handler(rustplus, client, message.broadcast.teamChanged.teamInfo);
-    const changed = rustplus.team.isLeaderSteamIdChanged(message.broadcast.teamChanged.teamInfo);
-    rustplus.team.updateTeam(message.broadcast.teamChanged.teamInfo);
-    if (changed) rustplus.updateLeaderRustPlusLiteInstance();
+    const teamInfo = message.broadcast.teamChanged.teamInfo;
+    /* Remembered at once: a poll whose team request was sent before this message carries an older
+       team and is not processed (it would announce a false connect/disconnect pair). */
+    rustplus.teamChangedSeq = (rustplus.teamChangedSeq || 0) + 1;
+    rustplus.lastTeamChangedAt = Date.now();
+    try {
+        await TeamHandler.enqueue(rustplus, async () => {
+            if (!rustplus.team) return;     /* no team information yet: the next poll creates it */
+            await TeamHandler.handler(rustplus, client, teamInfo);
+            const changed = rustplus.team.isLeaderSteamIdChanged(teamInfo);
+            rustplus.team.updateTeam(teamInfo);
+            if (changed) rustplus.updateLeaderRustPlusLiteInstance();
+        });
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Team changed: ${e}`, 'error');
+    }
 }
 
 async function messageBroadcastTeamMessage(rustplus, client, message) {
@@ -129,6 +144,7 @@ async function messageBroadcastTeamMessage(rustplus, client, message) {
 async function messageBroadcastEntityChanged(rustplus, client, message) {
     const instance = client.getInstance(rustplus.guildId);
     const entityId = message.broadcast.entityChanged.entityId;
+    if (!instance.serverList.hasOwnProperty(rustplus.serverId)) return;
 
     if (instance.serverList[rustplus.serverId].switches.hasOwnProperty(entityId)) {
         messageBroadcastEntityChangedSmartSwitch(rustplus, client, message);
@@ -153,26 +169,42 @@ async function messageBroadcastEntityChangedSmartSwitch(rustplus, client, messag
 
     if (!server || (server && !server.switches[entityId])) return;
 
-    if (rustplus.interactionSwitches.includes(`${entityId}`)) {
-        rustplus.interactionSwitches = rustplus.interactionSwitches.filter(e => e !== `${entityId}`);
+    const active = message.broadcast.entityChanged.payload.value;
+    const sw = server.switches[entityId];
+
+    /* The echo of the bot's own change (also when Rust+ timed out but the switch did change):
+       not a person's order. A stale entry (no echo came) expires, and a different value is a person. */
+    SwitchOverride.sweepInteractions(rustplus);
+    const echo = SwitchOverride.takeBotEcho(rustplus, entityId, active, sw);
+    if (echo) {
+        if (sw.active !== active || sw.reachable === false || echo.onConfirm) {
+            sw.active = active;
+            sw.reachable = true;
+            if (echo.onConfirm) {
+                /* An alarm action whose Rust+ answer timed out: it did happen */
+                if (echo.onConfirm.raidLock) {
+                    sw.raidLock = true;
+                    delete sw.manualOverride;
+                }
+                if (echo.onConfirm.holdUntil) sw.holdUntil = Math.max(sw.holdUntil || 0, echo.onConfirm.holdUntil);
+            }
+            client.setInstance(rustplus.guildId, instance);
+            DiscordMessages.sendSmartSwitchMessage(rustplus.guildId, serverId, entityId);
+            SmartSwitchGroupHandler.updateSwitchGroupIfContainSwitch(client, rustplus.guildId, serverId, entityId);
+        }
         return;
     }
 
-    if (rustplus.currentSwitchTimeouts.hasOwnProperty(entityId)) {
-        clearTimeout(rustplus.currentSwitchTimeouts[entityId]);
-        delete rustplus.currentSwitchTimeouts[entityId];
-    }
+    SwitchTimers.clear(client, rustplus.guildId, entityId);
 
     /* A change coming from the game. With SIEMPRE ENCENDIDO / SIEMPRE APAGADO it is respected like a
        command (also during a raid) until VOLVER A AUTOMÁTICO. The proximity / online modes keep deciding. */
-    const active = message.broadcast.entityChanged.payload.value;
-    const sw = server.switches[entityId];
     sw.active = active;
     if ([3, 4].includes(sw.autoDayNightOnOff)) {
         delete sw.raidLock;
         delete sw.holdUntil;
         if (active === (sw.autoDayNightOnOff === 3)) { delete sw.manualOverride; sw.orderAt = Date.now(); }
-        else require('../util/switchOverride.js').setManual(sw, active);
+        else SwitchOverride.setManual(sw, active);
     }
     client.setInstance(rustplus.guildId, instance);
 
@@ -226,7 +258,9 @@ async function messageBroadcastEntityChangedStorageMonitor(rustplus, client, mes
 
     if (server.storageMonitors[entityId].type === 'toolCupboard' ||
         message.broadcast.entityChanged.payload.capacity === Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY) {
-        setTimeout(updateToolCupboard.bind(null, rustplus, client, message), 2000);
+        setTimeout(() => updateToolCupboard(rustplus, client, message).catch(e => {
+            client.log(client.intlGet(null, 'errorCap'), `Tool Cupboard update failed: ${e}`, 'error');
+        }), 2000);
     }
     else {
         const prevItems = rustplus.storageMonitors.hasOwnProperty(entityId) ?
@@ -239,6 +273,7 @@ async function messageBroadcastEntityChangedStorageMonitor(rustplus, client, mes
         }
 
         const info = await rustplus.getEntityInfoAsync(entityId);
+        if (!isStillCurrent(rustplus, client, serverId, entityId)) return;
         server.storageMonitors[entityId].reachable = await rustplus.isResponseValid(info) ? true : false;
 
         if (server.storageMonitors[entityId].reachable) {
@@ -258,21 +293,40 @@ async function messageBroadcastEntityChangedStorageMonitor(rustplus, client, mes
     }
 }
 
-async function updateToolCupboard(rustplus, client, message) {
+/* After an await: the monitor may have been deleted, or the bot changed server / reconnected */
+function isStillCurrent(rustplus, client, serverId, entityId) {
+    if (rustplus.isDeleted) return false;
+    if (client.rustplusInstances && client.rustplusInstances[rustplus.guildId] &&
+        client.rustplusInstances[rustplus.guildId] !== rustplus) return false;
     const instance = client.getInstance(rustplus.guildId);
-    const server = instance.serverList[rustplus.serverId];
+    const server = instance && instance.serverList ? instance.serverList[serverId] : null;
+    return !!server && !!server.storageMonitors && server.storageMonitors.hasOwnProperty(entityId);
+}
+
+async function updateToolCupboard(rustplus, client, message) {
+    const serverId = rustplus.serverId;
     const entityId = message.broadcast.entityChanged.entityId;
+    if (!isStillCurrent(rustplus, client, serverId, entityId)) return;
 
     const info = await rustplus.getEntityInfoAsync(entityId);
+    if (!isStillCurrent(rustplus, client, serverId, entityId)) return;
+    const instance = client.getInstance(rustplus.guildId);
+    const server = instance.serverList[serverId];
     server.storageMonitors[entityId].reachable = await rustplus.isResponseValid(info) ? true : false;
     client.setInstance(rustplus.guildId, instance);
 
     if (server.storageMonitors[entityId].reachable) {
         const prevItems = rustplus.storageMonitors.hasOwnProperty(entityId) ?
             rustplus.storageMonitors[entityId].items : null;
+        const isCupboard = info.entityInfo.payload.capacity === Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY;
+        /* The same correction as the periodic reads (upkeepClock.js): with the raw value the
+           countdown jumps back and forth and the upkeep alerts ring again */
+        const expiry = isCupboard ? UpkeepClock.correct(UpkeepClock.storeFor(client, rustplus), entityId,
+            info.entityInfo.payload.protectionExpiry, info.entityInfo.payload.items) :
+            info.entityInfo.payload.protectionExpiry;
         rustplus.storageMonitors[entityId] = {
             items: info.entityInfo.payload.items,
-            expiry: info.entityInfo.payload.protectionExpiry,
+            expiry: expiry,
             capacity: info.entityInfo.payload.capacity,
             hasProtection: info.entityInfo.payload.hasProtection
         }
@@ -295,8 +349,9 @@ async function updateToolCupboard(rustplus, client, message) {
         }
         client.setInstance(rustplus.guildId, instance);
 
-        await BaseWatchHandler.onStorageUpdate(client, rustplus, entityId, prevItems, info.entityInfo.payload);
+        await BaseWatchHandler.onStorageUpdate(client, rustplus, entityId, prevItems,
+            { ...info.entityInfo.payload, protectionExpiry: expiry });
     }
 
-    await DiscordMessages.sendStorageMonitorMessage(rustplus.guildId, rustplus.serverId, entityId);
+    await DiscordMessages.sendStorageMonitorMessage(rustplus.guildId, serverId, entityId);
 }

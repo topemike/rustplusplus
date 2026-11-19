@@ -23,6 +23,9 @@ const Map = require('../util/map.js');
 const ExtraEvents = require('./ExtraEvents.js');
 const Timer = require('../util/timer');
 
+/* Not one marker of a type in this long since connecting: Rust+ does not send that type */
+const VENDING_CHECK_MS = 5 * 60 * 1000;
+
 class MapMarkers {
     constructor(mapMarkers, rustplus, client) {
         this._markers = mapMarkers.markers;
@@ -73,6 +76,12 @@ class MapMarkers {
 
         /* Vending Machine variables */
         this.knownVendingMachines = [];
+
+        /* When each marker type was last received, and when this connection started. Since the Rust
+           update of August 2026 Facepunch does not send some types (Cargo Ship, Patrol Helicopter,
+           vending machines, Traveling Vendor, explosions) to Rust+ any more: see isTypeUnavailable(). */
+        this.connectedAt = Date.now();
+        this.lastSeenByType = new Object();
 
         this.updateMapMarkers(mapMarkers);
     }
@@ -259,7 +268,42 @@ class MapMarkers {
 
     /* Update event map markers */
 
+    /* Start of the current connection (a reconnection of the same instance starts it again) */
+    getConnectionStart() {
+        const uptime = this.rustplus && this.rustplus.uptimeServer ? new Date(this.rustplus.uptimeServer).getTime() : 0;
+        return Math.max(this.connectedAt, isNaN(uptime) ? 0 : uptime);
+    }
+
+    /**
+     *  Is this marker type not sent by Rust+? True when no marker of that type came in this connection
+     *  and no vending machine came either after VENDING_CHECK_MS. As soon as one comes (Facepunch may
+     *  bring them back) the normal behaviour returns.
+     */
+    isTypeUnavailable(type, now = Date.now()) {
+        const start = this.getConnectionStart();
+        const seenInConnection = (t) => {
+            const lastSeen = this.lastSeenByType[t];
+            return !!lastSeen && lastSeen >= start;
+        };
+        if (seenInConnection(type)) return false;
+
+        /* Vending machines are always on the map: if they come, Rust+ sends the event markers normally
+           (cargo or heli may simply not be out yet). If none came after a few minutes, the markers were
+           cut by Facepunch and the other event types are not sent either. */
+        const vending = this.types.VendingMachine;
+        if (seenInConnection(vending)) return false;
+        return now - start > VENDING_CHECK_MS;
+    }
+
+    recordSeenTypes(mapMarkers, now = Date.now()) {
+        if (!mapMarkers || !Array.isArray(mapMarkers.markers)) return;
+        for (const marker of mapMarkers.markers) {
+            if (marker && marker.type !== undefined) this.lastSeenByType[marker.type] = now;
+        }
+    }
+
     updateMapMarkers(mapMarkers) {
+        this.recordSeenTypes(mapMarkers);
         this.updatePlayers(mapMarkers);
         this.updateCargoShips(mapMarkers);
         this.updatePatrolHelicopters(mapMarkers);

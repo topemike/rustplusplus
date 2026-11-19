@@ -21,6 +21,7 @@
 const Discord = require('discord.js');
 
 const Constants = require('../util/constants.js');
+const CustomId = require('../util/customId.js');
 const Client = require('../../index.ts');
 const Config = require('../../config');
 
@@ -47,7 +48,7 @@ module.exports = {
     getServerButtons: function (guildId, serverId, state = null) {
         const instance = Client.client.getInstance(guildId);
         const server = instance.serverList[serverId];
-        const identifier = JSON.stringify({ "serverId": serverId });
+        const ids = { "serverId": serverId };
 
         if (state === null) {
             if (instance.activeServer === serverId && Client.client.activeRustplusInstances[guildId]) {
@@ -61,43 +62,43 @@ module.exports = {
         let connectionButton = null;
         if (state === 0) {
             connectionButton = module.exports.getButton({
-                customId: `ServerConnect${identifier}`,
+                customId: CustomId.make('ServerConnect', ids),
                 label: Client.client.intlGet(guildId, 'connectCap'),
                 style: PRIMARY
             });
         }
         else if (state === 1) {
             connectionButton = module.exports.getButton({
-                customId: `ServerDisconnect${identifier}`,
+                customId: CustomId.make('ServerDisconnect', ids),
                 label: Client.client.intlGet(guildId, 'disconnectCap'),
                 style: DANGER
             });
         }
         else if (state === 2) {
             connectionButton = module.exports.getButton({
-                customId: `ServerReconnecting${identifier}`,
+                customId: CustomId.make('ServerReconnecting', ids),
                 label: Client.client.intlGet(guildId, 'reconnectingCap'),
                 style: DANGER
             });
         }
 
         const deleteUnreachableDevicesButton = module.exports.getButton({
-            customId: `DeleteUnreachableDevices${identifier}`,
+            customId: CustomId.make('DeleteUnreachableDevices', ids),
             label: Client.client.intlGet(guildId, 'deleteUnreachableDevicesCap'),
             style: PRIMARY
         });
         const customTimersButton = module.exports.getButton({
-            customId: `CustomTimersEdit${identifier}`,
+            customId: CustomId.make('CustomTimersEdit', ids),
             label: Client.client.intlGet(guildId, 'customTimersCap'),
             style: PRIMARY
         });
         const trackerButton = module.exports.getButton({
-            customId: `CreateTracker${identifier}`,
+            customId: CustomId.make('CreateTracker', ids),
             label: Client.client.intlGet(guildId, 'createTrackerCap'),
             style: PRIMARY
         });
         const groupButton = module.exports.getButton({
-            customId: `CreateGroup${identifier}`,
+            customId: CustomId.make('CreateGroup', ids),
             label: Client.client.intlGet(guildId, 'createGroupCap'),
             style: PRIMARY
         });
@@ -112,12 +113,12 @@ module.exports = {
             url: `${Constants.BATTLEMETRICS_SERVER_URL}${server.battlemetricsId}`
         });
         let editButton = module.exports.getButton({
-            customId: `ServerEdit${identifier}`,
+            customId: CustomId.make('ServerEdit', ids),
             label: Client.client.intlGet(guildId, 'editCap'),
             style: PRIMARY
         });
         let deleteButton = module.exports.getButton({
-            customId: `ServerDelete${identifier}`,
+            customId: CustomId.make('ServerDelete', ids),
             style: SECONDARY,
             emoji: '🗑️'
         });
@@ -153,23 +154,23 @@ module.exports = {
     getSmartSwitchButtons: function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].switches[entityId];
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         const row = new Discord.ActionRowBuilder().addComponents(
             module.exports.getButton({
-                customId: `SmartSwitch${entity.active ? 'Off' : 'On'}${identifier}`,
+                customId: CustomId.make(`SmartSwitch${entity.active ? 'Off' : 'On'}`, ids),
                 label: entity.active ?
                     Client.client.intlGet(guildId, 'turnOffCap') :
                     Client.client.intlGet(guildId, 'turnOnCap'),
                 style: entity.active ? DANGER : SUCCESS
             }),
             module.exports.getButton({
-                customId: `SmartSwitchEdit${identifier}`,
+                customId: CustomId.make('SmartSwitchEdit', ids),
                 label: Client.client.intlGet(guildId, 'editCap'),
                 style: PRIMARY
             }),
             module.exports.getButton({
-                customId: `SmartSwitchDelete${identifier}`,
+                customId: CustomId.make('SmartSwitchDelete', ids),
                 style: SECONDARY,
                 emoji: '🗑️'
             }));
@@ -177,7 +178,7 @@ module.exports = {
         const SO = require('../util/switchOverride.js');
         if (SO.isPaused(entity) || SO.isRaidLocked(entity)) {
             row.addComponents(module.exports.getButton({
-                customId: `SmartSwitchResumeAuto${identifier}`,
+                customId: CustomId.make('SmartSwitchResumeAuto', ids),
                 label: Client.client.intlGet(guildId, 'switchAutoResumeCap'),
                 style: PRIMARY
             }));
@@ -186,38 +187,38 @@ module.exports = {
     },
 
     getSmartSwitchGroupButtons: function (guildId, serverId, groupId) {
-        const identifier = JSON.stringify({ "serverId": serverId, "groupId": groupId });
+        const ids = { "serverId": serverId, "groupId": groupId };
 
         return [
             new Discord.ActionRowBuilder().addComponents(
                 module.exports.getButton({
-                    customId: `GroupTurnOn${identifier}`,
+                    customId: CustomId.make('GroupTurnOn', ids),
                     label: Client.client.intlGet(guildId, 'turnOnCap'),
                     style: PRIMARY
                 }),
                 module.exports.getButton({
-                    customId: `GroupTurnOff${identifier}`,
+                    customId: CustomId.make('GroupTurnOff', ids),
                     label: Client.client.intlGet(guildId, 'turnOffCap'),
                     style: PRIMARY
                 }),
                 module.exports.getButton({
-                    customId: `GroupEdit${identifier}`,
+                    customId: CustomId.make('GroupEdit', ids),
                     label: Client.client.intlGet(guildId, 'editCap'),
                     style: PRIMARY
                 }),
                 module.exports.getButton({
-                    customId: `GroupDelete${identifier}`,
+                    customId: CustomId.make('GroupDelete', ids),
                     style: SECONDARY,
                     emoji: '🗑️'
                 })),
             new Discord.ActionRowBuilder().addComponents(
                 module.exports.getButton({
-                    customId: `GroupAddSwitch${identifier}`,
+                    customId: CustomId.make('GroupAddSwitch', ids),
                     label: Client.client.intlGet(guildId, 'addSwitchCap'),
                     style: SUCCESS
                 }),
                 module.exports.getButton({
-                    customId: `GroupRemoveSwitch${identifier}`,
+                    customId: CustomId.make('GroupRemoveSwitch', ids),
                     label: Client.client.intlGet(guildId, 'removeSwitchCap'),
                     style: DANGER
                 }))
@@ -227,26 +228,26 @@ module.exports = {
     getSmartAlarmButtons: function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         return new Discord.ActionRowBuilder().addComponents(
             module.exports.getButton({
-                customId: `SmartAlarmEveryone${identifier}`,
+                customId: CustomId.make('SmartAlarmEveryone', ids),
                 label: '@everyone',
                 style: entity.everyone ? SUCCESS : DANGER
             }),
             module.exports.getButton({
-                customId: `SmartAlarmRaidMode${identifier}`,
+                customId: CustomId.make('SmartAlarmRaidMode', ids),
                 label: Client.client.intlGet(guildId, 'raidModeCap'),
                 style: entity.raidMode !== false ? SUCCESS : DANGER
             }),
             module.exports.getButton({
-                customId: `SmartAlarmEdit${identifier}`,
+                customId: CustomId.make('SmartAlarmEdit', ids),
                 label: Client.client.intlGet(guildId, 'editCap'),
                 style: PRIMARY
             }),
             module.exports.getButton({
-                customId: `SmartAlarmDelete${identifier}`,
+                customId: CustomId.make('SmartAlarmDelete', ids),
                 style: SECONDARY,
                 emoji: '🗑️'
             }));
@@ -255,47 +256,47 @@ module.exports = {
     getStorageMonitorToolCupboardButtons: function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].storageMonitors[entityId];
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         return new Discord.ActionRowBuilder().addComponents(
             module.exports.getButton({
-                customId: `StorageMonitorToolCupboardEveryone${identifier}`,
+                customId: CustomId.make('StorageMonitorToolCupboardEveryone', ids),
                 label: '@everyone',
                 style: entity.everyone ? SUCCESS : DANGER
             }),
             module.exports.getButton({
-                customId: `StorageMonitorToolCupboardInGame${identifier}`,
+                customId: CustomId.make('StorageMonitorToolCupboardInGame', ids),
                 label: Client.client.intlGet(guildId, 'inGameCap'),
                 style: entity.inGame ? SUCCESS : DANGER
             }),
             module.exports.getButton({
-                customId: `StorageMonitorEdit${identifier}`,
+                customId: CustomId.make('StorageMonitorEdit', ids),
                 label: Client.client.intlGet(guildId, 'editCap'),
                 style: PRIMARY,
             }),
             module.exports.getButton({
-                customId: `StorageMonitorToolCupboardDelete${identifier}`,
+                customId: CustomId.make('StorageMonitorToolCupboardDelete', ids),
                 style: SECONDARY,
                 emoji: '🗑️'
             }));
     },
 
     getStorageMonitorContainerButton: function (guildId, serverId, entityId) {
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         return new Discord.ActionRowBuilder().addComponents(
             module.exports.getButton({
-                customId: `StorageMonitorEdit${identifier}`,
+                customId: CustomId.make('StorageMonitorEdit', ids),
                 label: Client.client.intlGet(guildId, 'editCap'),
                 style: PRIMARY,
             }),
             module.exports.getButton({
-                customId: `StorageMonitorRecycle${identifier}`,
+                customId: CustomId.make('StorageMonitorRecycle', ids),
                 label: Client.client.intlGet(guildId, 'recycleCap'),
                 style: PRIMARY,
             }),
             module.exports.getButton({
-                customId: `StorageMonitorContainerDelete${identifier}`,
+                customId: CustomId.make('StorageMonitorContainerDelete', ids),
                 style: SECONDARY,
                 emoji: '🗑️'
             }));
@@ -311,21 +312,21 @@ module.exports = {
     },
 
     getNotificationButtons: function (guildId, setting, discordActive, inGameActive, voiceActive) {
-        const identifier = JSON.stringify({ "setting": setting });
+        const ids = { "setting": setting };
 
         return new Discord.ActionRowBuilder().addComponents(
             module.exports.getButton({
-                customId: `DiscordNotification${identifier}`,
+                customId: CustomId.make('DiscordNotification', ids),
                 label: Client.client.intlGet(guildId, 'discordCap'),
                 style: discordActive ? SUCCESS : DANGER
             }),
             module.exports.getButton({
-                customId: `InGameNotification${identifier}`,
+                customId: CustomId.make('InGameNotification', ids),
                 label: Client.client.intlGet(guildId, 'inGameCap'),
                 style: inGameActive ? SUCCESS : DANGER
             }),
             module.exports.getButton({
-                customId: `VoiceNotification${identifier}`,
+                customId: CustomId.make('VoiceNotification', ids),
                 label: Client.client.intlGet(guildId, 'voiceCap'),
                 style: voiceActive ? SUCCESS : DANGER
             }));
@@ -426,54 +427,54 @@ module.exports = {
     getTrackerButtons: function (guildId, trackerId) {
         const instance = Client.client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
-        const identifier = JSON.stringify({ "trackerId": trackerId });
+        const ids = { "trackerId": trackerId };
 
         return [
             new Discord.ActionRowBuilder().addComponents(
                 module.exports.getButton({
-                    customId: `TrackerAddPlayer${identifier}`,
+                    customId: CustomId.make('TrackerAddPlayer', ids),
                     label: Client.client.intlGet(guildId, 'addPlayerCap'),
                     style: SUCCESS
                 }),
                 module.exports.getButton({
-                    customId: `TrackerRemovePlayer${identifier}`,
+                    customId: CustomId.make('TrackerRemovePlayer', ids),
                     label: Client.client.intlGet(guildId, 'removePlayerCap'),
                     style: DANGER
                 }),
                 module.exports.getButton({
-                    customId: `TrackerEdit${identifier}`,
+                    customId: CustomId.make('TrackerEdit', ids),
                     label: Client.client.intlGet(guildId, 'editCap'),
                     style: PRIMARY
                 }),
                 module.exports.getButton({
-                    customId: `TrackerDelete${identifier}`,
+                    customId: CustomId.make('TrackerDelete', ids),
                     style: SECONDARY,
                     emoji: '🗑️'
                 })),
             new Discord.ActionRowBuilder().addComponents(
                 module.exports.getButton({
-                    customId: `TrackerInGame${identifier}`,
+                    customId: CustomId.make('TrackerInGame', ids),
                     label: Client.client.intlGet(guildId, 'inGameCap'),
                     style: tracker.inGame ? SUCCESS : DANGER
                 }),
                 module.exports.getButton({
-                    customId: `TrackerEveryone${identifier}`,
+                    customId: CustomId.make('TrackerEveryone', ids),
                     label: '@everyone',
                     style: tracker.everyone ? SUCCESS : DANGER
                 }),
                 module.exports.getButton({
-                    customId: `TrackerUpdate${identifier}`,
+                    customId: CustomId.make('TrackerUpdate', ids),
                     label: Client.client.intlGet(guildId, 'updateCap'),
                     style: PRIMARY
                 })),
             new Discord.ActionRowBuilder().addComponents(
                 module.exports.getButton({
-                    customId: `TrackerClanAlerts${identifier}`,
+                    customId: CustomId.make('TrackerClanAlerts', ids),
                     label: Client.client.intlGet(guildId, 'trackerClanAlertsCap'),
                     style: tracker.clanAlerts !== false ? SUCCESS : DANGER
                 }),
                 module.exports.getButton({
-                    customId: `TrackerSchedule${identifier}`,
+                    customId: CustomId.make('TrackerSchedule', ids),
                     label: Client.client.intlGet(guildId, 'trackerScheduleCap'),
                     style: PRIMARY,
                     emoji: '\u{1F4C5}'

@@ -41,8 +41,16 @@ module.exports = {
         try {
             await module.exports.poll(rustplus, client);
         }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Polling: ${e && e.stack ? e.stack : e}`, 'error');
+        }
         finally {
             rustplus.pollingBusy = false;
+        }
+        /* The first poll after connecting failed: it becomes operational when one completes */
+        if (!rustplus.isOperational && typeof rustplus.markOperationalIfReady === 'function' &&
+            rustplus.markOperationalIfReady()) {
+            rustplus.log(client.intlGet(null, 'connectedCap'), 'First complete poll: operational.');
         }
     },
 
@@ -68,9 +76,12 @@ module.exports = {
         }
         let mapMarkers = await rustplus.getMapMarkersAsync();
         if (!(await rustplus.isResponseValid(mapMarkers))) return;
+        /* "Team changed" messages seen before the team request is sent (see message.js) */
+        const teamSeq = rustplus.teamChangedSeq || 0;
         let teamInfo = await rustplus.getTeamInfoAsync();
         if (!(await rustplus.isResponseValid(teamInfo))) return;
         let time = await rustplus.getTimeAsync();
+        const timeStamp = Date.now();   /* when the in-game time was read (not after the handlers) */
         if (!(await rustplus.isResponseValid(time))) return;
 
         if (rustplus.isFirstPoll) {
@@ -80,19 +91,26 @@ module.exports = {
             rustplus.mapMarkers = new MapMarkers(mapMarkers.mapMarkers, rustplus, client);
         }
 
-        await module.exports.handlers(rustplus, client, info, mapMarkers, teamInfo, time);
+        await module.exports.handlers(rustplus, client, info, mapMarkers, teamInfo, time,
+            { teamSeq: teamSeq, timeStamp: timeStamp });
         rustplus.isFirstPoll = false;
     },
 
-    handlers: async function (rustplus, client, info, mapMarkers, teamInfo, time) {
-        await TeamHandler.handler(rustplus, client, teamInfo.teamInfo);
-        rustplus.team.updateTeam(teamInfo.teamInfo);
+    handlers: async function (rustplus, client, info, mapMarkers, teamInfo, time, meta = {}) {
+        /* Team processing is serialised with the "team changed" messages. If one arrived after this
+           poll's team request was sent, this answer is older than what is already applied: skip it
+           (the next poll catches up). */
+        await TeamHandler.enqueue(rustplus, async () => {
+            if (meta.teamSeq !== undefined && (rustplus.teamChangedSeq || 0) !== meta.teamSeq) return;
+            await TeamHandler.handler(rustplus, client, teamInfo.teamInfo);
+            rustplus.team.updateTeam(teamInfo.teamInfo);
+        });
 
         await SmartSwitchHandler.handler(rustplus, client, time.time);
         TimeHandler.handler(rustplus, client, time.time);
         await VendingMachines.handler(rustplus, client, mapMarkers.mapMarkers);
 
-        rustplus.time.updateTime(time.time);
+        rustplus.time.updateTime(time.time, meta.timeStamp);
         rustplus.info.updateInfo(info.info);
         rustplus.mapMarkers.updateMapMarkers(mapMarkers.mapMarkers);
         try {

@@ -25,7 +25,13 @@ const Types = require('discord-api-types/v9');
 
 const Config = require('../../config');
 
-module.exports = async (client, guild) => {
+/**
+ *  Registers the slash commands of a guild.
+ *  @param {boolean} exitOnFailure Only at startup: without slash commands the bot is useless, so it stops.
+ *      From a handler (e.g. language change) a failure is only logged.
+ *  @return {boolean} true if registered.
+ */
+module.exports = async (client, guild, exitOnFailure = false) => {
     const commands = [];
     const commandFiles = Fs.readdirSync(Path.join(__dirname, '..', 'commands')).filter(file => file.endsWith('.js'));
 
@@ -46,8 +52,10 @@ module.exports = async (client, guild) => {
             client.intlGet(null, 'makeSureApplicationsCommandsEnabled'),
             'error'
         );
-        process.exit(1);
+        if (exitOnFailure) process.exit(1);
+        return false;
     }
     client.log(client.intlGet(null, 'infoCap'),
         client.intlGet(null, 'slashCommandsSuccessRegister', { guildId: guild.id }));
+    return true;
 };

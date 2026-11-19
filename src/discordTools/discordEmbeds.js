@@ -179,7 +179,7 @@ module.exports = {
                 Client.client.intlGet(guildId, 'empty') : ''}`;
             id += '\n';
 
-            if (!bmInstance.players.hasOwnProperty(player.playerId) || !successful) {
+            if (!successful || !bmInstance.players || !bmInstance.players.hasOwnProperty(player.playerId)) {
                 status += `${Constants.NOT_FOUND_EMOJI}\n`;
             }
             else {
@@ -319,18 +319,22 @@ module.exports = {
 
         let description = `**ID** \`${entityId}\``;
 
-        if (!rustplus) {
+        /* Not connected, connected to another server, or the monitor was not read yet */
+        const connected = rustplus && (rustplus.serverId === undefined || rustplus.serverId === serverId);
+        const data = connected && rustplus.storageMonitors ? rustplus.storageMonitors[entityId] : undefined;
+        if (!data) {
             return module.exports.getEmbed({
                 title: `${entity.name}${grid}`,
                 color: Constants.COLOR_DEFAULT,
-                description: `${description}\n${Client.client.intlGet(guildId, 'statusNotConnectedToServer')}`,
+                description: `${description}\n${Client.client.intlGet(guildId,
+                    connected ? 'storageMonitorNoDataYet' : 'statusNotConnectedToServer')}`,
                 thumbnail: `attachment://${entity.image}`,
                 footer: { text: `${entity.server}` },
                 timestamp: true
             });
         }
 
-        if (rustplus && rustplus.storageMonitors[entityId].capacity === 0) {
+        if (data.capacity === 0) {
             return module.exports.getEmbed({
                 title: `${entity.name}${grid}`,
                 color: Constants.COLOR_DEFAULT,
@@ -346,9 +350,9 @@ module.exports = {
             `\`${entity.type !== null ? Client.client.intlGet(guildId, entity.type) :
                 Client.client.intlGet(guildId, 'unknown')}\``;
 
-        const items = rustplus.storageMonitors[entityId].items;
-        const expiry = rustplus.storageMonitors[entityId].expiry;
-        const capacity = rustplus.storageMonitors[entityId].capacity;
+        const items = data.items || [];
+        const expiry = data.expiry;
+        const capacity = data.capacity;
 
         description += `\n**${Client.client.intlGet(guildId, 'slots')}** `;
         description += `\`(${items.length}/${capacity})\``
@@ -822,14 +826,21 @@ module.exports = {
         const chinook47FieldName = Client.client.intlGet(guildId, 'chinook47');
         const travelingVendorFieldName = Client.client.intlGet(guildId, 'travelingVendor');
 
-        const cargoShipMessage = rustplus.getCommandCargo(true);
-        const patrolHelicopterMessage = rustplus.getCommandHeli(true);
-        const smallOilMessage = rustplus.getCommandSmall(true);
-        const largeOilMessage = rustplus.getCommandLarge(true);
-        const ch47Message = rustplus.getCommandChinook(true);
-        const travelingVendorMessage = rustplus.getCommandTravelingVendor(true);
-        const bradleyMessage = rustplus.getCommandBradley(true);
-        const crateMessage = rustplus.getCommandCrate(true);
+        /* One line per event. Events whose map markers Rust+ does not send any more (Cargo Ship, Patrol
+           Helicopter, Traveling Vendor, explosions for the Bradley APC) say so instead of "Not active". */
+        const asText = (value) => {
+            if (Array.isArray(value)) value = value.join(', ');
+            return (value === null || value === undefined || `${value}` === '') ?
+                Client.client.intlGet(guildId, 'notActive') : `${value}`;
+        };
+        const cargoShipMessage = asText(rustplus.getCommandCargo(true));
+        const patrolHelicopterMessage = asText(rustplus.getCommandHeli(true));
+        const smallOilMessage = asText(rustplus.getCommandSmall(true));
+        const largeOilMessage = asText(rustplus.getCommandLarge(true));
+        const ch47Message = asText(rustplus.getCommandChinook(true));
+        const travelingVendorMessage = asText(rustplus.getCommandTravelingVendor(true));
+        const bradleyMessage = asText(rustplus.getCommandBradley(true));
+        const crateMessage = asText(rustplus.getCommandCrate(true));
         const deepSeaServer = instance.serverList[rustplus.serverId];
         const deepSeaMessage = deepSeaServer && deepSeaServer.deepSea ?
             require('../handlers/deepSeaHandler.js').statusText(Client.client, guildId, deepSeaServer.deepSea,

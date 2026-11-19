@@ -20,6 +20,8 @@
 
 const Discord = require('discord.js');
 
+const CustomId = require('../util/customId.js');
+
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordSelectMenus = require('../discordTools/discordSelectMenus.js');
 const DiscordTools = require('../discordTools/discordTools.js');
@@ -38,6 +40,8 @@ module.exports = async (client, interaction) => {
             id: `${verifyId}`,
             user: `${interaction.user.username} (${interaction.user.id})`
         }));
+        try { await interaction.deferUpdate(); }
+        catch (e) { /* already answered */ }
         return;
     }
 
@@ -60,8 +64,10 @@ module.exports = async (client, interaction) => {
             components: [DiscordSelectMenus.getLanguageSelectMenu(guildId, interaction.values[0])]
         });
 
+        /* Re-register the slash commands in the new language; a failure is only logged (no exit) */
         const guild = DiscordTools.getGuild(guildId);
-        await require('../discordTools/RegisterSlashCommands')(client, guild);
+        try { await require('../discordTools/RegisterSlashCommands')(client, guild, false); }
+        catch (e) { client.log(client.intlGet(null, 'errorCap'), `${e}`, 'error'); }
     }
     else if (interaction.customId === 'Prefix') {
         instance.generalSettings.prefix = interaction.values[0];
@@ -128,11 +134,14 @@ module.exports = async (client, interaction) => {
         });
     }
     else if (interaction.customId.startsWith('AutoDayNightOnOff')) {
-        const ids = JSON.parse(interaction.customId.replace('AutoDayNightOnOff', ''));
+        const ids = CustomId.parse('AutoDayNightOnOff', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
 
         if (!server || (server && !server.switches.hasOwnProperty(ids.entityId))) {
-            await interaction.message.delete();
+            try { await interaction.deferUpdate(); }
+            catch (e) { /* already answered */ }
+            try { await interaction.message.delete(); }
+            catch (e) { /* already gone */ }
             return;
         }
 
@@ -143,6 +152,9 @@ module.exports = async (client, interaction) => {
             /* The mode chosen now prevails over an earlier change by hand */
             require('../util/switchOverride.js').clear(server.switches[ids.entityId]);
             client.setInstance(guildId, instance);
+
+            /* A pending timed command would later turn the switch against the chosen mode */
+            require('../util/switchTimers.js').clear(client, guildId, ids.entityId);
         }
 
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'selectMenuValueChange', {
@@ -150,7 +162,7 @@ module.exports = async (client, interaction) => {
             value: `${server.switches[ids.entityId].autoDayNightOnOff}`
         }));
 
-        DiscordMessages.sendSmartSwitchMessage(guildId, ids.serverId, ids.entityId, interaction);
+        await DiscordMessages.sendSmartSwitchMessage(guildId, ids.serverId, ids.entityId, interaction);
     }
 
     client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'userSelectMenuInteractionSuccess', {

@@ -40,11 +40,15 @@ const DiscordTools = require('../discordTools/discordTools.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const { resolveActionTargets, describeActionTargets } = require('../util/raidTargets.js');
 const Timer = require('../util/timer');
+const SwitchOverride = require('../util/switchOverride.js');
+const SwitchTimers = require('../util/switchTimers.js');
 
 const TICK_MS = 5 * 1000;
 const ACTION_INTERVAL_MS = 30 * 1000;
+const PENDING_RETRY_MS = 15 * 1000;
 
 const incidents = new Object();
+const pendingActions = new Object();   /* guildId -> entityId -> { serverId, value, effect, at, triedAt } */
 
 function settings() {
     return {
@@ -59,7 +63,7 @@ function settings() {
 /* ------------------------------------------------------------------------- */
 
 async function runAlarmActions(client, rustplus, guildId, serverId, alarm, now = Date.now()) {
-    if (!alarm.actions || !rustplus) return;
+    if (!alarm.actions) return;
     const instance = client.getInstance(guildId);
     const server = instance.serverList[serverId];
     if (!server) return;
@@ -73,67 +77,145 @@ async function runAlarmActions(client, rustplus, guildId, serverId, alarm, now =
         }
         return ids;
     };
-    /* Someone gave an order to a switch during this raid (command, button, VOLVER A AUTOMÁTICO...):
-       the next alarm triggers of the same raid do not take it back */
-    const incident = incidents[guildId];
-    const ordered = (entityId) => {
-        const sw = server.switches[entityId];
-        return !sw || (incident && !incident.endedAt && sw.orderAt && sw.orderAt > incident.startedAt);
-    };
     const onIds = [...new Set([...(alarm.actions.switches || []).map(e => `${e}`), ...members(alarm.actions.groups)])]
-        .filter(e => !ordered(e));
+        .filter(e => !isOrdered(client, guildId, serverId, e));
     const offIds = [...new Set([...(alarm.actions.offSwitches || []).map(e => `${e}`),
-        ...members(alarm.actions.offGroups)])].filter(e => !ordered(e));
+        ...members(alarm.actions.offGroups)])].filter(e => !isOrdered(client, guildId, serverId, e));
 
     /* A timed command still pending (e.g. "!sammode off 10m") must not undo the raid when its time is up */
     const touched = new Set([...onIds, ...offIds]);
-    if (rustplus.currentSwitchTimeouts) {
-        for (const [key, timer] of Object.entries(rustplus.currentSwitchTimeouts)) {
-            const group = server.switchGroups[key];
-            if (!touched.has(`${key}`) && !(group && group.switches.some(e => touched.has(`${e}`)))) continue;
-            clearTimeout(timer);
-            delete rustplus.currentSwitchTimeouts[key];
-        }
+    const timers = SwitchTimers.forGuild(client, guildId);
+    for (const key of Object.keys(timers)) {
+        const group = server.switchGroups[key];
+        if (!touched.has(`${key}`) && !(group && group.switches.some(e => touched.has(`${e}`)))) continue;
+        SwitchTimers.clear(client, guildId, key);
     }
 
-    /* Held on: automatic modes leave it alone for a while */
-    for (const entityId of onIds) {
-        server.switches[entityId].holdUntil = Math.max(server.switches[entityId].holdUntil || 0, holdUntil);
-    }
-    /* Turned off by the alarm (e.g. the SAM to attack mode): stays like that, ignoring its
-       automatic mode, until someone gives an order (button, mode, command) */
+    /* raidLock (turned off by the alarm, e.g. the SAM to attack mode: stays like that until someone gives
+       an order) and holdUntil (held on: automatic modes leave it alone for a while) are only set when the
+       switch really changed. Not connected / no answer: remembered and done when possible. */
     for (const entityId of offIds) {
-        server.switches[entityId].raidLock = true;
-        delete server.switches[entityId].manualOverride;
+        await setSwitch(client, rustplus, guildId, serverId, entityId, false, { raidLock: true }, now);
     }
-    client.setInstance(guildId, instance);
-
-    for (const entityId of offIds) await setSwitch(client, rustplus, guildId, serverId, entityId, false);
-    for (const entityId of onIds) await setSwitch(client, rustplus, guildId, serverId, entityId, true);
+    for (const entityId of onIds) {
+        await setSwitch(client, rustplus, guildId, serverId, entityId, true, { holdUntil: holdUntil }, now);
+    }
 }
 
-/* Turns one switch on/off for an alarm (the bot's own change, not a person's) */
-async function setSwitch(client, rustplus, guildId, serverId, entityId, value) {
-    const sw = client.getInstance(guildId).serverList[serverId].switches[entityId];
-    if (!sw) return;
-    if (sw.active === value) {
-        DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
-        return;
+/* Someone gave an order to the switch during this raid (command, button, VOLVER A AUTOMÁTICO...):
+   the alarm triggers of the same raid do not take it back */
+function isOrdered(client, guildId, serverId, entityId) {
+    const server = client.getInstance(guildId).serverList[serverId];
+    const sw = server ? server.switches[entityId] : null;
+    const incident = incidents[guildId];
+    return !sw || !!(incident && !incident.endedAt && sw.orderAt && sw.orderAt > incident.startedAt);
+}
+
+function usableRustplus(client, rustplus, guildId, serverId) {
+    if (rustplus && !rustplus.isDeleted && rustplus.isOperational !== false && rustplus.serverId === serverId) {
+        return rustplus;
     }
-    const fresh = client.getInstance(guildId);
-    fresh.serverList[serverId].switches[entityId].active = value;
-    client.setInstance(guildId, fresh);
+    return SwitchTimers.liveRustplus(client, guildId, serverId);
+}
+
+/* What the alarm did to the switch once it really changed */
+function applyEffect(sw, effect) {
+    if (effect.raidLock) {
+        sw.raidLock = true;
+        delete sw.manualOverride;
+    }
+    if (effect.holdUntil) sw.holdUntil = Math.max(sw.holdUntil || 0, effect.holdUntil);
+}
+
+function queuePending(guildId, serverId, entityId, value, effect, now) {
+    if (!pendingActions[guildId]) pendingActions[guildId] = {};
+    pendingActions[guildId][`${entityId}`] = { serverId: serverId, value: value, effect: effect, at: now, triedAt: 0 };
+}
+
+/* Turns one switch on/off for an alarm (the bot's own change, not a person's).
+   Returns true when done (or already like that). */
+async function setSwitch(client, rustplus, guildId, serverId, entityId, value, effect = {}, now = Date.now()) {
+    const instance = client.getInstance(guildId);
+    const sw = instance.serverList[serverId] ? instance.serverList[serverId].switches[entityId] : null;
+    if (!sw) return false;
+
+    rustplus = usableRustplus(client, rustplus, guildId, serverId);
+    if (!rustplus) {
+        queuePending(guildId, serverId, entityId, value, effect, now);
+        return false;
+    }
+    if (pendingActions[guildId]) delete pendingActions[guildId][`${entityId}`];
+
+    if (sw.active === value) {
+        applyEffect(sw, effect);
+        client.setInstance(guildId, instance);
+        DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
+        return true;
+    }
+    const prevActive = sw.active;
+    sw.active = value;
+    client.setInstance(guildId, instance);
+    /* The echo of this change is the bot's, even if it comes after a Rust+ timeout */
+    SwitchOverride.markBotChange(rustplus, entityId, value, Object.keys(effect).length > 0 ? effect : null);
     rustplus.interactionSwitches.push(entityId);
     const response = await rustplus.turnSmartSwitchAsync(entityId, value);
+    const fresh = client.getInstance(guildId).serverList[serverId];
+    const now2 = fresh ? fresh.switches[entityId] : null;
+    if (!now2) return false;
+    let done = false;
     if (!(await rustplus.isResponseValid(response))) {
-        const failed = client.getInstance(guildId);
-        failed.serverList[serverId].switches[entityId].active = !value;
-        failed.serverList[serverId].switches[entityId].reachable = false;
-        client.setInstance(guildId, failed);
         rustplus.interactionSwitches = rustplus.interactionSwitches.filter(e => e !== entityId);
+        const echoed = !(rustplus.botSwitchChanges && rustplus.botSwitchChanges[`${entityId}`]);
+        if (!echoed) {
+            /* No late echo meanwhile: not changed (yet). The mark stays (a late echo still confirms it,
+               see message.js), and it is tried again later. */
+            now2.active = prevActive;
+            now2.reachable = false;
+            queuePending(guildId, serverId, entityId, value, effect, now);
+            pendingActions[guildId][`${entityId}`].triedAt = Date.now();
+        }
+        else done = true;     /* the echo came: it did change (the effect was set by message.js) */
     }
+    else {
+        SwitchOverride.clearBotChangeConfirm(rustplus, entityId);
+        now2.reachable = true;
+        done = true;
+    }
+    if (done) applyEffect(now2, effect);
+    client.setInstance(guildId, client.getInstance(guildId));
     DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
     await SmartSwitchGroupHandler.updateSwitchGroupIfContainSwitch(client, guildId, serverId, entityId);
+    return done;
+}
+
+/* Alarm actions that could not be done (not connected, no answer): done when possible, while the raid
+   lasts and nobody gave the switch an order since */
+async function runPendingActions(client, guildId, now = Date.now()) {
+    const pending = pendingActions[guildId];
+    if (!pending || Object.keys(pending).length === 0) return;
+    const incident = incidents[guildId];
+    for (const [entityId, p] of Object.entries(pending)) {
+        if (!incident || incident.endedAt || incident.serverId !== p.serverId) {
+            delete pending[entityId];
+            client.log(client.intlGet(null, 'warningCap'),
+                `Raid alarm action on switch ${entityId} not done: the raid is over.`, 'warning');
+            continue;
+        }
+        if (isOrdered(client, guildId, p.serverId, entityId)) {
+            delete pending[entityId];
+            continue;
+        }
+        if (now - (p.triedAt || 0) < PENDING_RETRY_MS) continue;
+        const rustplus = SwitchTimers.liveRustplus(client, guildId, p.serverId);
+        if (!rustplus) continue;
+        p.triedAt = now;
+        try {
+            await setSwitch(client, rustplus, guildId, p.serverId, entityId, p.value, p.effect, p.at);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Alarm action failed: ${e}`, 'error');
+        }
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -305,6 +387,7 @@ async function deleteReminder(guildId, incident) {
  */
 async function onAlarmTriggered(client, rustplus, guildId, serverId, entityId, now = Date.now()) {
     const server = client.getInstance(guildId).serverList[serverId];
+    if (!server || !server.alarms[entityId]) return;
     await trigger(client, rustplus, guildId, serverId, entityId, server.alarms[entityId], true, now);
 }
 
@@ -336,8 +419,21 @@ async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isS
     const instance = client.getInstance(guildId);
     const server = instance.serverList[serverId];
 
+    if (!server) return;
+
     let incident = incidents[guildId];
-    /* A raid of another server (the bot changed server) is not continued */
+    /* A raid of another server (the bot changed server) is not continued: it is ended properly
+       (reminder deleted, unpinned, stats recorded) before the new one starts */
+    if (incident && !incident.endedAt && incident.serverId !== serverId) {
+        try {
+            await endIncident(client, guildId, incident, now);
+        }
+        catch (e) {
+            client.log(client.intlGet(null, 'errorCap'), `Raid handler: ${e}`, 'error');
+        }
+        if (pendingActions[guildId]) delete pendingActions[guildId];
+        if (incidents[guildId] !== incident) incident = incidents[guildId];
+    }
     const isNew = !incident || incident.endedAt || incident.serverId !== serverId;
     if (isNew) {
         incident = {
@@ -411,8 +507,13 @@ async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isS
 async function tick(client, now = Date.now()) {
     const s = settings();
     for (const [guildId, incident] of Object.entries(incidents)) {
-        if (incident.endedAt) continue;
+        if (incident.endedAt) {
+            if (pendingActions[guildId]) await runPendingActions(client, guildId, now);
+            continue;
+        }
         try {
+            await runPendingActions(client, guildId, now);
+
             if (now - incident.lastTriggerAt >= s.quietMs) {
                 await endIncident(client, guildId, incident, now);
                 continue;
@@ -509,6 +610,7 @@ module.exports = {
     resolveActionTargets: resolveActionTargets,
     describeActionTargets: describeActionTargets,
     getIncident: (guildId) => incidents[guildId],
+    getPendingActions: (guildId) => pendingActions[guildId] || {},
 
     start: function (client) {
         if (client.raidIntervalId) clearInterval(client.raidIntervalId);
@@ -516,5 +618,8 @@ module.exports = {
     },
 
     /* For tests */
-    _reset: function () { for (const k of Object.keys(incidents)) delete incidents[k]; }
+    _reset: function () {
+        for (const k of Object.keys(incidents)) delete incidents[k];
+        for (const k of Object.keys(pendingActions)) delete pendingActions[k];
+    }
 };

@@ -25,7 +25,7 @@
  *  - Marked open: a warning 10 minutes before it closes and one when it closes.
  *  - Closed: the bot gives the window in which it will reopen, warns when the window starts and
  *    reminds every 30 minutes until the latest time. Then one last reminder to mark it, and silence.
- *  - If the closed time measured two cycles in a row is the same (+-3 min), the server has a fixed
+ *  - If the closed time measured three cycles in a row is the same (within 2 min), the server has a fixed
  *    cycle: from then on every opening is predicted too (warnings 10 and 5 minutes before).
  *  - Marks can be given late ("!deepsea open 20" = it opened 20 minutes ago).
  *  - The open time and the closed range are learned from the marks.
@@ -44,8 +44,10 @@ const MAX_LATE_MINUTES = 600;
 const OPEN_LIMITS_MS = [20 * MINUTE_MS, 6 * 60 * MINUTE_MS];
 const CLOSED_LIMITS_MS = [5 * MINUTE_MS, 4 * 60 * MINUTE_MS];
 
-/* Two closed times in a row this close to each other = the server has a fixed cycle */
-const FIXED_TOLERANCE_MS = 3 * MINUTE_MS;
+/* The last FIXED_SAMPLES closed times all within this range of each other = the server has a fixed
+   cycle (two random durations of 1h30-2h30 are too often close by chance) */
+const FIXED_TOLERANCE_MS = 2 * MINUTE_MS;
+const FIXED_SAMPLES = 3;
 const MAX_SAMPLES = 5;
 
 const OPEN_WORDS = ['open', 'opened', 'abierto', 'abre', 'abrio', 'abrió'];
@@ -71,12 +73,12 @@ function getDeepSea(server) {
     return server.deepSea;
 }
 
-/* Closed duration when the server uses a fixed cycle (last two measurements agree), else null */
+/* Closed duration when the server uses a fixed cycle (last three measurements agree), else null */
 function fixedClosedMs(ds) {
-    const samples = ds.closedSamples || [];
-    if (samples.length < 2) return null;
-    const a = samples[samples.length - 1], b = samples[samples.length - 2];
-    return Math.abs(a - b) <= FIXED_TOLERANCE_MS ? Math.round((a + b) / 2) : null;
+    const samples = (ds.closedSamples || []).slice(-FIXED_SAMPLES);
+    if (samples.length < FIXED_SAMPLES) return null;
+    if (Math.max(...samples) - Math.min(...samples) > FIXED_TOLERANCE_MS) return null;
+    return Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
 }
 
 function durations(ds) {
@@ -369,7 +371,7 @@ function markAndDescribe(client, guildId, instance, server, opened, now = Date.n
             { time: Timer.secondsToFullScale(result.ms / 1000, 's') });
     }
     if (fixedAfter !== null && fixedBefore === null) {
-        text += ' ' + client.intlGet(guildId, 'deepSeaFixedDetected', { time: Timer.secondsToFullScale(fixedAfter / 1000, 's') });
+        text += ' ' + client.intlGet(guildId, 'deepSeaFixedDetectedThree', { time: Timer.secondsToFullScale(fixedAfter / 1000, 's') });
     }
     else if (fixedAfter === null && fixedBefore !== null && result.learned === 'closed') {
         text += ' ' + client.intlGet(guildId, 'deepSeaFixedLost', { time: Timer.secondsToFullScale(result.ms / 1000, 's') });

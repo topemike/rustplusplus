@@ -69,10 +69,10 @@ function load(guildId) {
     return data;
 }
 
-function save(guildId) {
+/* Old records are pruned against the time of the change being saved (not the real clock) */
+function save(guildId, now = Date.now()) {
     const data = cache[guildId];
     if (!data) return;
-    const now = Date.now();
     data.events = data.events.filter(e => now - e.t <= KEEP_MS);
     data.raids = data.raids.filter(r => now - r.end <= KEEP_MS);
     try {
@@ -86,13 +86,13 @@ function recordEvent(guildId, settingKey, text, now = Date.now()) {
     if (!settingKey) return;
     const data = load(guildId);
     data.events.push({ t: now, s: settingKey, x: `${text}`.slice(0, 200) });
-    save(guildId);
+    save(guildId, now);
 }
 
 function recordRaid(guildId, raid) {
     const data = load(guildId);
     data.raids.push(raid);
-    save(guildId);
+    save(guildId, raid && Number.isFinite(raid.end) ? raid.end : Date.now());
 }
 
 /* ------------------------------------------------------------------------- */
@@ -247,7 +247,7 @@ function isFirstRun(guildId) {
 function markSent(guildId, now = Date.now()) {
     const data = load(guildId);
     data.lastSummaryDay = localDayAndHour(now).day;
-    save(guildId);
+    save(guildId, now);
 }
 
 module.exports = {

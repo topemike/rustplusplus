@@ -196,7 +196,7 @@ class DiscordBot extends Discord.Client {
         const channel = DiscordTools.getTextChannelById(interaction.guildId, interaction.channelId);
         const args = new Object();
         args['guild'] = `${interaction.member.guild.name} (${interaction.member.guild.id})`;
-        args['channel'] = `${channel.name} (${interaction.channelId})`;
+        args['channel'] = `${channel ? channel.name : '-'} (${interaction.channelId})`;
         args['user'] = `${interaction.user.username} (${interaction.user.id})`;
         args[(type === 'slashCommand') ? 'command' : 'customid'] = (type === 'slashCommand') ?
             `${interaction.commandName}` : `${interaction.customId}`;
@@ -209,7 +209,7 @@ class DiscordBot extends Discord.Client {
         const instance = this.getInstance(guild.id);
         const firstTime = instance.firstTime;
 
-        await require('../discordTools/RegisterSlashCommands')(this, guild);
+        await require('../discordTools/RegisterSlashCommands')(this, guild, true);
 
         let category = await require('../discordTools/SetupGuildCategory')(this, guild);
         await require('../discordTools/SetupGuildChannels')(this, guild, category);
@@ -308,15 +308,42 @@ class DiscordBot extends Discord.Client {
             return null;
         }
 
+        /* Custom !timer timers survive the reconnection (same server only) */
+        let carriedTimers = [];
+        if (!this.pendingCustomTimers) this.pendingCustomTimers = new Object();
+        const pending = this.pendingCustomTimers[guildId];
+        if (pending && pending.serverId === serverId) carriedTimers = pending.timers || [];
+        delete this.pendingCustomTimers[guildId];
+
         /* Only one connection per Discord server: close the previous one if it is still there */
         const previous = this.rustplusInstances[guildId];
         if (previous) {
+            if (previous.serverId === serverId && typeof previous.exportCustomTimers === 'function') {
+                carriedTimers = carriedTimers.concat(previous.exportCustomTimers());
+            }
+            for (const content of Object.values(previous.timers || {})) {
+                try { content.timer.stop(); } catch (e) { /* already stopped */ }
+            }
+            previous.timers = new Object();
             previous.isDeleted = true;
             clearInterval(previous.pollingTaskId);
             try { previous.disconnect(); } catch (e) { /* already closed */ }
         }
 
         let rustplus = new RustPlus(guildId, serverIp, appPort, steamId, playerToken);
+        /* Timed-command timers are kept per Discord server: they survive the reconnect */
+        require('../util/switchTimers.js').bind(this, rustplus);
+        if (carriedTimers.length > 0) {
+            try {
+                const restored = rustplus.restoreCustomTimers(carriedTimers);
+                if (restored > 0) {
+                    this.log(this.intlGet(null, 'infoCap'), `Custom timers restored after reconnecting: ${restored}.`);
+                }
+            }
+            catch (e) {
+                this.log(this.intlGet(null, 'errorCap'), `Could not restore custom timers: ${e}`, 'error');
+            }
+        }
 
         /* Add rustplus instance to Object */
         this.rustplusInstances[guildId] = rustplus;
@@ -338,12 +365,18 @@ class DiscordBot extends Discord.Client {
             if (!instance) return;
 
             if (instance.activeServer !== null && instance.serverList.hasOwnProperty(instance.activeServer)) {
-                this.createRustplusInstance(
-                    guildId,
-                    instance.serverList[instance.activeServer].serverIp,
-                    instance.serverList[instance.activeServer].appPort,
-                    instance.serverList[instance.activeServer].steamId,
-                    instance.serverList[instance.activeServer].playerToken);
+                /* One broken guild must not stop the others from connecting */
+                try {
+                    this.createRustplusInstance(
+                        guildId,
+                        instance.serverList[instance.activeServer].serverIp,
+                        instance.serverList[instance.activeServer].appPort,
+                        instance.serverList[instance.activeServer].steamId,
+                        instance.serverList[instance.activeServer].playerToken);
+                }
+                catch (e) {
+                    this.log(this.intlGet(null, 'errorCap'), `Could not connect guild ${guildId}: ${e}`, 'error');
+                }
             }
         });
     }
@@ -543,15 +576,23 @@ class DiscordBot extends Discord.Client {
 
         if (instance.blacklist['discordIds'].includes(interaction.user.id) &&
             !interaction.member.permissions.has(Discord.PermissionsBitField.Flags.Administrator)) {
+            /* Blacklisted: answer anyway (privately) so the command does not hang */
+            await this.interactionReply(interaction, {
+                ...DiscordEmbeds.getActionInfoEmbed(1, this.intlGet(interaction.guildId, 'userBlacklistedReply')),
+                ephemeral: true
+            });
             return false;
         }
 
         /* If role isn't setup yet, validate as true */
         if (instance.role === null) return true;
 
+        /* The access role was deleted from Discord: do not lock everyone out, behave as without a role */
+        const role = DiscordTools.getRole(interaction.guildId, instance.role);
+        if (!role) return true;
+
         if (!interaction.member.permissions.has(Discord.PermissionsBitField.Flags.Administrator) &&
             !interaction.member.roles.cache.has(instance.role)) {
-            let role = DiscordTools.getRole(interaction.guildId, instance.role);
             const str = this.intlGet(interaction.guildId, 'notPartOfRole', { role: role.name });
             await this.interactionReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
             this.log(this.intlGet(null, 'warningCap'), str);

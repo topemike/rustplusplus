@@ -38,7 +38,7 @@ module.exports = {
             rustplus.storageMonitorIntervalCounter += 1;
         }
 
-        if (!rustplus.upkeepClock) rustplus.upkeepClock = {};
+        const upkeepClock = UpkeepClock.storeFor(client, rustplus);
 
         /* Tool Cupboards are read every minute: the protection end Rust+ sends has to be followed
            closely to keep the countdown right (see upkeepClock.js). Everything else every 5 minutes. */
@@ -53,7 +53,7 @@ module.exports = {
                 if (payload.capacity !== Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY) continue;
                 rustplus.storageMonitors[entityId].items = payload.items;
                 rustplus.storageMonitors[entityId].expiry =
-                    UpkeepClock.correct(rustplus.upkeepClock, entityId, payload.protectionExpiry, payload.items);
+                    UpkeepClock.correct(upkeepClock, entityId, payload.protectionExpiry, payload.items);
             }
         }
 
@@ -85,7 +85,7 @@ module.exports = {
                     const prevItems = rustplus.storageMonitors.hasOwnProperty(entityId) ?
                         rustplus.storageMonitors[entityId].items : null;
                     const isCupboard = info.entityInfo.payload.capacity === Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY;
-                    const expiry = isCupboard ? UpkeepClock.correct(rustplus.upkeepClock, entityId,
+                    const expiry = isCupboard ? UpkeepClock.correct(upkeepClock, entityId,
                         info.entityInfo.payload.protectionExpiry, info.entityInfo.payload.items) :
                         info.entityInfo.payload.protectionExpiry;
                     rustplus.storageMonitors[entityId] = {

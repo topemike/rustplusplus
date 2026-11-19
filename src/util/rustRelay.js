@@ -64,12 +64,18 @@ function parseAuthToken(token) {
     }
 }
 
-/* Relay details for a server/player, or null when the server has no relay id or the player has
-   no auth token (caller then falls back to a direct connection). */
-function resolve(guildId, serverIp, appPort, steamId) {
+/* Seconds to wait between connection attempts when the relay refuses the token (or it expired). */
+const SLOW_RETRY_MS = 5 * 60 * 1000;
+
+/*
+    Relay details for a server/player with the reason when they cannot be used:
+    { relay: {relayServerId, authToken, expiresAt} | null, reason, relayServerId, expiresAt }
+    reason: 'ok' | 'expired' (relay set, token expired) | 'noInstance' | 'noRelayId' | 'noToken'
+*/
+function resolveDetailed(guildId, serverIp, appPort, steamId) {
     const Client = require('../../index.ts');
     const instance = Client.client.getInstance(guildId);
-    if (!instance) return null;
+    if (!instance) return { relay: null, reason: 'noInstance', relayServerId: null, expiresAt: null };
 
     const serverKey = `${serverIp}-${appPort}`;
     let relayServerId = null;
@@ -85,19 +91,102 @@ function resolve(guildId, serverIp, appPort, steamId) {
             }
         }
     }
-    if (!relayServerId) return null;
+    /* Keyed by the relay id itself ('relay-<id>') */
+    if (!relayServerId && `${serverIp}` === 'relay' && appPort) relayServerId = `${appPort}`;
+    if (!relayServerId) return { relay: null, reason: 'noRelayId', relayServerId: null, expiresAt: null };
 
-    const credentials = InstanceUtils.readCredentialsFile(guildId);
+    let credentials = null;
+    try {
+        credentials = InstanceUtils.readCredentialsFile(guildId);
+    }
+    catch (e) {
+        credentials = null;
+    }
     const credential = credentials ? credentials[`${steamId}`] : null;
     const authToken = credential ? normaliseAuthToken(credential.rustplus_auth_token) : null;
-    if (!authToken) return null;
+    if (!authToken) return { relay: null, reason: 'noToken', relayServerId: relayServerId, expiresAt: null };
 
     const parsed = parseAuthToken(authToken);
-    return {
-        relayServerId: relayServerId,
-        authToken: authToken,
-        expiresAt: parsed ? parsed.expiresAt : null
-    };
+    const expiresAt = parsed ? parsed.expiresAt : null;
+    const relay = { relayServerId: relayServerId, authToken: authToken, expiresAt: expiresAt };
+    const expired = expiresAt !== null && expiresAt * 1000 < Date.now();
+    return { relay: relay, reason: expired ? 'expired' : 'ok', relayServerId: relayServerId, expiresAt: expiresAt };
+}
+
+/* Relay details for a server/player, or null when the server has no relay id or the player has
+   no auth token (caller then falls back to a direct connection, never for 'relay' servers). */
+function resolve(guildId, serverIp, appPort, steamId) {
+    return resolveDetailed(guildId, serverIp, appPort, steamId).relay;
+}
+
+/* HTTP status when the error is the relay refusing the websocket handshake (401/403), else null. */
+function refusalStatus(err) {
+    if (!err) return null;
+    const match = `${err.message || err}`.match(/Unexpected server response: (\d{3})/);
+    if (!match) return null;
+    const status = parseInt(match[1]);
+    return (status === 401 || status === 403) ? status : null;
+}
+
+/*
+    One Discord warning (activity channel) per guild/account/token when the relay refuses the token,
+    the token expired or there is none: "run /credentials add again with a new rustplus_auth_token".
+    reason: 'refused' | 'expired' | 'noToken'. Returns true if a message was sent.
+*/
+async function warnTokenProblem(client, guildId, steamId, reason, extra = {}) {
+    try {
+        if (!client.rustRelayTokenWarnings) client.rustRelayTokenWarnings = new Object();
+        if (!client.rustRelayTokenWarnings[guildId]) client.rustRelayTokenWarnings[guildId] = new Object();
+        const warned = client.rustRelayTokenWarnings[guildId];
+        const key = `${steamId}|${extra.expiresAt || 'none'}`;
+        if (warned[key]) return false;
+        warned[key] = true;
+
+        const reasonText = reason === 'refused' ?
+            client.intlGet(guildId, 'relayTokenReasonRefused', { status: extra.status || '401' }) :
+            reason === 'expired' ?
+                client.intlGet(guildId, 'relayTokenReasonExpired', {
+                    date: extra.expiresAt ? `<t:${extra.expiresAt}:F>` : '-'
+                }) :
+                client.intlGet(guildId, 'relayTokenReasonMissing');
+        const text = client.intlGet(guildId, 'relayTokenProblemDesc', {
+            steamId: `${steamId}`,
+            reason: reasonText,
+            minutes: `${Math.round(SLOW_RETRY_MS / 60000)}`
+        });
+        client.log(client.intlGet(null, 'warningCap'),
+            `Rust+ relay token problem (${reason}) for ${steamId} in guild ${guildId}.`, 'warn');
+
+        const instance = client.getInstance(guildId);
+        const channelId = instance && instance.channelId ? instance.channelId.activity : null;
+        if (!channelId) return false;
+
+        const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
+        const DiscordMessages = require('../discordTools/discordMessages.js');
+        const Constants = require('./constants.js');
+        await DiscordMessages.sendMessage(guildId, {
+            embeds: [DiscordEmbeds.getEmbed({
+                color: Constants.COLOR_INACTIVE,
+                title: client.intlGet(guildId, 'relayTokenProblemTitle'),
+                description: text,
+                timestamp: true
+            })]
+        }, null, channelId);
+        return true;
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Rust+ relay token warning: ${e}`, 'error');
+        return false;
+    }
+}
+
+/* A connection of steamId worked: its next problem warns again. */
+function clearTokenWarning(client, guildId, steamId) {
+    const warned = client.rustRelayTokenWarnings ? client.rustRelayTokenWarnings[guildId] : null;
+    if (!warned) return;
+    for (const key of Object.keys(warned)) {
+        if (key.startsWith(`${steamId}|`)) delete warned[key];
+    }
 }
 
 function connect(rustplus, relay) {
@@ -127,7 +216,17 @@ function connect(rustplus, relay) {
             /* The relay may send text frames; only binary frames are protobuf AppMessages. */
             if (!isBinary) return;
 
-            const message = rustplus.AppMessage.decode(data);
+            let message;
+            try {
+                message = rustplus.AppMessage.decode(data);
+            }
+            catch (e) {
+                if (typeof rustplus.log === 'function') {
+                    rustplus.log('ERROR', `Rust+ relay: could not decode a message (${data ? data.length : 0} ` +
+                        `bytes): ${e.message}`, 'error');
+                }
+                return;
+            }
 
             if (message.response && message.response.seq && rustplus.seqCallbacks[message.response.seq]) {
                 const callback = rustplus.seqCallbacks[message.response.seq];
@@ -136,10 +235,15 @@ function connect(rustplus, relay) {
                 if (result) return;
             }
 
-            rustplus.emit('message', rustplus.AppMessage.decode(data));
+            rustplus.emit('message', message);
         });
 
-        rustplus.websocket.on('close', () => {
+        rustplus.websocket.on('close', (code, reason) => {
+            rustplus.lastCloseCode = code;
+            if (typeof rustplus.log === 'function') {
+                const why = reason && reason.length ? ` (${reason.toString().slice(0, 100)})` : '';
+                rustplus.log('INFO', `Rust+ relay connection closed, code ${code}${why}.`);
+            }
             rustplus.emit('disconnected');
         });
     }).catch((e) => {
@@ -149,28 +253,77 @@ function connect(rustplus, relay) {
 
 /*
     Since the relay change, pairing notifications may no longer carry ip/port, only the relay
-    server id ("id"). ip/port are only used as the server's key in the instance file, so when they
-    are missing we reuse the entry already paired with the same relay id, or key it by the relay id.
+    server id ("id"). ip/port are only used as the server's key in the instance file. Lookup order:
+      1. an entry (serverList, then serverListLite) already paired with the same relay id, the
+         active server first when there are several;
+      2. ip/port when the notification has them (the entry gets the relay id if it lacks it);
+      3. an entry paired before the relay change (no relay id) with the same server name: it gets
+         the relay id now (re-pairing the server/devices fixes it);
+      4. 'relay-<id>'.
+    It may store relayServerId on the given instance: the caller saves it (address.updated true).
 */
 function pairingAddress(instance, body) {
-    if (body.ip && body.port) {
-        return { serverIp: `${body.ip}`, appPort: `${body.port}`, serverId: `${body.ip}-${body.port}` };
-    }
-    if (!body.id) return null;
+    const relayId = body.id ? `${body.id}` : null;
+    const serverList = instance.serverList || {};
+    const serverListLite = instance.serverListLite || {};
+    const active = instance.activeServer || null;
+    const pick = (ids) => ids.includes(active) ? active : ids[0];
 
-    for (const [serverId, server] of Object.entries(instance.serverList || {})) {
-        if (server && server.serverIp && server.relayServerId === body.id) {
-            return { serverIp: server.serverIp, appPort: server.appPort, serverId: serverId };
+    if (relayId) {
+        const ids = Object.keys(serverList).filter(id =>
+            serverList[id] && serverList[id].serverIp && `${serverList[id].relayServerId}` === relayId);
+        if (ids.length > 0) {
+            const id = pick(ids);
+            return { serverIp: serverList[id].serverIp, appPort: serverList[id].appPort, serverId: id };
         }
-    }
-    for (const [serverId, lites] of Object.entries(instance.serverListLite || {})) {
-        for (const lite of Object.values(lites || {})) {
-            if (lite && lite.serverIp && lite.relayServerId === body.id) {
-                return { serverIp: lite.serverIp, appPort: lite.appPort, serverId: serverId };
+
+        const liteIds = [];
+        const liteEntry = {};
+        for (const [serverId, lites] of Object.entries(serverListLite)) {
+            for (const lite of Object.values(lites || {})) {
+                if (lite && lite.serverIp && `${lite.relayServerId}` === relayId) {
+                    liteIds.push(serverId);
+                    liteEntry[serverId] = lite;
+                    break;
+                }
             }
         }
+        if (liteIds.length > 0) {
+            const id = pick(liteIds);
+            return { serverIp: liteEntry[id].serverIp, appPort: liteEntry[id].appPort, serverId: id };
+        }
     }
-    return { serverIp: 'relay', appPort: `${body.id}`, serverId: `relay-${body.id}` };
+
+    if (body.ip && body.port) {
+        const serverId = `${body.ip}-${body.port}`;
+        let updated = false;
+        if (relayId && serverList[serverId] && !serverList[serverId].relayServerId) {
+            serverList[serverId].relayServerId = relayId;
+            updated = true;
+        }
+        return { serverIp: `${body.ip}`, appPort: `${body.port}`, serverId: serverId, updated: updated };
+    }
+    if (!relayId) return null;
+
+    /* Paired before the relay change: same name, no relay id yet */
+    const name = body.name ? `${body.name}`.trim() : null;
+    if (name) {
+        const ids = Object.keys(serverList).filter(id => serverList[id] && serverList[id].serverIp &&
+            !serverList[id].relayServerId && `${serverList[id].title || ''}`.trim() === name);
+        if (ids.length > 0) {
+            const id = pick(ids);
+            serverList[id].relayServerId = relayId;
+            for (const lite of Object.values(serverListLite[id] || {})) {
+                if (lite && !lite.relayServerId) lite.relayServerId = relayId;
+            }
+            return { serverIp: serverList[id].serverIp, appPort: serverList[id].appPort, serverId: id, updated: true };
+        }
+    }
+
+    return { serverIp: 'relay', appPort: relayId, serverId: `relay-${relayId}` };
 }
 
-module.exports = { resolve, connect, pairingAddress, normaliseAuthToken, parseAuthToken };
+module.exports = {
+    resolve, resolveDetailed, connect, pairingAddress, normaliseAuthToken, parseAuthToken,
+    refusalStatus, warnTokenProblem, clearTokenWarning, SLOW_RETRY_MS
+};

@@ -37,8 +37,12 @@ const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
-/* If the bot was down longer than this, open sessions are closed at the last known check. */
-const STALE_TICK_MS = 5 * MINUTE_MS;
+/* If the bot was down longer than this, open sessions are closed at the last known check. At least
+   three BattleMetrics rounds (a long interval is not the bot being down). */
+function staleTickMs() {
+    const intervalS = Config.battlemetrics && Number(Config.battlemetrics.intervalSeconds) || 0;
+    return Math.max(5 * MINUTE_MS, 3 * intervalS * 1000);
+}
 /* Sampling step used for the schedule analysis. */
 const SAMPLE_STEP_MS = 5 * MINUTE_MS;
 
@@ -140,6 +144,7 @@ function update(guildId, trackerId, tracker, bmInstance, now = Date.now()) {
 
     /* Bot was down: close sessions that were open at the last check. Players that are online now
        start a new session, but are not counted as fresh logins (we don't know when they joined). */
+    const STALE_TICK_MS = staleTickMs();
     const resumed = th.lastTick === null || now - th.lastTick > STALE_TICK_MS;
     if (th.lastTick !== null && now - th.lastTick > STALE_TICK_MS) {
         for (const data of Object.values(th.players)) {
@@ -176,6 +181,16 @@ function update(guildId, trackerId, tracker, bmInstance, now = Date.now()) {
         if (key === null) continue;
 
         const state = isPlayerOnline(player, bmInstance);
+        /* The entry got its Steam ID (merged with a duplicate): keep its history */
+        const bmKey = player.playerId ? `bm:${player.playerId}` : null;
+        if (!th.players[key] && bmKey && bmKey !== key && th.players[bmKey]) {
+            th.players[key] = th.players[bmKey];
+            delete th.players[bmKey];
+            th.reconnecting = (th.reconnecting || []).map(k => k === bmKey ? key : k);
+            th.recentLogins = th.recentLogins.map(l => l.key === bmKey ? Object.assign({}, l, { key: key }) : l);
+        }
+        /* A player seen for the first time (just added) who is online is not a fresh login */
+        const firstSeen = !th.players[key];
         if (!th.players[key]) th.players[key] = { name: player.name, sessions: [] };
         const data = th.players[key];
         data.name = player.name;
@@ -192,7 +207,7 @@ function update(guildId, trackerId, tracker, bmInstance, now = Date.now()) {
                 data.sessions.push([now, null]);
                 const reconnect = th.reconnecting.includes(key);
                 if (reconnect) th.reconnecting = th.reconnecting.filter(k => k !== key);
-                if (!resumed && !reconnect) th.recentLogins.push({ key: key, name: player.name, time: now });
+                if (!resumed && !reconnect && !firstSeen) th.recentLogins.push({ key: key, name: player.name, time: now });
             }
         }
         else if (open) {

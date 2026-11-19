@@ -27,25 +27,32 @@ module.exports = {
     async execute(client, interaction) {
         const instance = client.getInstance(interaction.guildId);
 
-        /* Check so that the interaction comes from valid channels */
-        if (!Object.values(instance.channelId).includes(interaction.channelId) && !interaction.isCommand) {
-            client.log(client.intlGet(null, 'warningCap'), client.intlGet(null, 'interactionInvalidChannel'))
-            if (interaction.isButton()) {
-                try {
-                    interaction.deferUpdate();
-                }
-                catch (e) {
-                    client.log(client.intlGet(null, 'errorCap'),
-                        client.intlGet(null, 'couldNotDeferInteraction'), 'error');
-                }
+        /* Check so that the interaction comes from valid channels. Slash commands work everywhere, and so
+           do buttons of private (ephemeral) answers, e.g. the /limpieza confirmation in any channel. */
+        const isComponent = (typeof interaction.isButton === 'function' && interaction.isButton()) ||
+            (typeof interaction.isStringSelectMenu === 'function' && interaction.isStringSelectMenu());
+        const ephemeral = interaction.message && interaction.message.flags &&
+            typeof interaction.message.flags.has === 'function' &&
+            interaction.message.flags.has(Discord.MessageFlags.Ephemeral);
+        if (isComponent && !ephemeral && !Object.values(instance.channelId).includes(interaction.channelId)) {
+            client.log(client.intlGet(null, 'warningCap'), client.intlGet(null, 'interactionInvalidChannel'));
+            try {
+                await interaction.deferUpdate();
             }
+            catch (e) {
+                client.log(client.intlGet(null, 'errorCap'),
+                    client.intlGet(null, 'couldNotDeferInteraction'), 'error');
+            }
+            return;     /* answered once: the handler must not answer again */
         }
 
         if (interaction.isButton()) {
-            require('../handlers/buttonHandler')(client, interaction);
+            await require('../handlers/buttonHandler')(client, interaction)
+                .catch(e => client.log(client.intlGet(null, 'errorCap'), e, 'error'));
         }
         else if (interaction.isStringSelectMenu()) {
-            require('../handlers/selectMenuHandler')(client, interaction);
+            await require('../handlers/selectMenuHandler')(client, interaction)
+                .catch(e => client.log(client.intlGet(null, 'errorCap'), e, 'error'));
         }
         else if (interaction.type === Discord.InteractionType.ApplicationCommand) {
             const command = interaction.client.commands.get(interaction.commandName);
@@ -65,14 +72,15 @@ module.exports = {
             }
         }
         else if (interaction.type === Discord.InteractionType.ModalSubmit) {
-            require('../handlers/modalHandler')(client, interaction);
+            await require('../handlers/modalHandler')(client, interaction)
+                .catch(e => client.log(client.intlGet(null, 'errorCap'), e, 'error'));
         }
         else {
             client.log(client.intlGet(null, 'errorCap'), client.intlGet(null, 'unknownInteraction'), 'error');
 
             if (interaction.isButton()) {
                 try {
-                    interaction.deferUpdate();
+                    await interaction.deferUpdate();
                 }
                 catch (e) {
                     client.log(client.intlGet(null, 'errorCap'),

@@ -21,6 +21,7 @@
 const Discord = require('discord.js');
 
 const Client = require('../../index.ts');
+const CustomId = require('../util/customId.js');
 const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const RaidTargets = require('../util/raidTargets.js');
@@ -39,10 +40,10 @@ module.exports = {
     getServerEditModal(guildId, serverId) {
         const instance = Client.client.getInstance(guildId);
         const server = instance.serverList[serverId];
-        const identifier = JSON.stringify({ "serverId": serverId });
+        const ids = { "serverId": serverId };
 
         const modal = module.exports.getModal({
-            customId: `ServerEdit${identifier}`,
+            customId: CustomId.make('ServerEdit', ids),
             title: Client.client.intlGet(guildId, 'editing')
         });
 
@@ -63,10 +64,10 @@ module.exports = {
     getCustomTimersEditModal(guildId, serverId) {
         const instance = Client.client.getInstance(guildId);
         const server = instance.serverList[serverId];
-        const identifier = JSON.stringify({ "serverId": serverId });
+        const ids = { "serverId": serverId };
 
         const modal = module.exports.getModal({
-            customId: `CustomTimersEdit${identifier}`,
+            customId: CustomId.make('CustomTimersEdit', ids),
             title: Client.client.intlGet(guildId, 'customTimerEditDesc')
         });
 
@@ -97,10 +98,10 @@ module.exports = {
     getSmartSwitchEditModal(guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].switches[entityId];
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         const modal = module.exports.getModal({
-            customId: `SmartSwitchEdit${identifier}`,
+            customId: CustomId.make('SmartSwitchEdit', ids),
             title: Client.client.intlGet(guildId, 'editingOf', {
                 entity: entity.name.length > 18 ? `${entity.name.slice(0, 18)}..` : entity.name
             })
@@ -138,10 +139,10 @@ module.exports = {
     getGroupEditModal(guildId, serverId, groupId) {
         const instance = Client.client.getInstance(guildId);
         const group = instance.serverList[serverId].switchGroups[groupId];
-        const identifier = JSON.stringify({ "serverId": serverId, "groupId": groupId });
+        const ids = { "serverId": serverId, "groupId": groupId };
 
         const modal = module.exports.getModal({
-            customId: `GroupEdit${identifier}`,
+            customId: CustomId.make('GroupEdit', ids),
             title: Client.client.intlGet(guildId, 'editingOf', {
                 entity: group.name.length > 18 ? `${group.name.slice(0, 18)}..` : group.name
             })
@@ -168,10 +169,10 @@ module.exports = {
     getGroupAddSwitchModal(guildId, serverId, groupId) {
         const instance = Client.client.getInstance(guildId);
         const group = instance.serverList[serverId].switchGroups[groupId];
-        const identifier = JSON.stringify({ "serverId": serverId, "groupId": groupId });
+        const ids = { "serverId": serverId, "groupId": groupId };
 
         const modal = module.exports.getModal({
-            customId: `GroupAddSwitch${identifier}`,
+            customId: CustomId.make('GroupAddSwitch', ids),
             title: Client.client.intlGet(guildId, 'groupAddSwitchDesc', { group: group.name })
         });
 
@@ -190,10 +191,10 @@ module.exports = {
     getGroupRemoveSwitchModal(guildId, serverId, groupId) {
         const instance = Client.client.getInstance(guildId);
         const group = instance.serverList[serverId].switchGroups[groupId];
-        const identifier = JSON.stringify({ "serverId": serverId, "groupId": groupId });
+        const ids = { "serverId": serverId, "groupId": groupId };
 
         const modal = module.exports.getModal({
-            customId: `GroupRemoveSwitch${identifier}`,
+            customId: CustomId.make('GroupRemoveSwitch', ids),
             title: Client.client.intlGet(guildId, 'groupRemoveSwitchDesc', { group: group.name })
         });
 
@@ -231,10 +232,10 @@ module.exports = {
     getSmartAlarmEditModal(guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         const modal = module.exports.getModal({
-            customId: `SmartAlarmEdit${identifier}`,
+            customId: CustomId.make('SmartAlarmEdit', ids),
             title: Client.client.intlGet(guildId, 'editingOf', {
                 entity: entity.name.length > 18 ? `${entity.name.slice(0, 18)}..` : entity.name
             })
@@ -283,10 +284,10 @@ module.exports = {
     getStorageMonitorEditModal(guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].storageMonitors[entityId];
-        const identifier = JSON.stringify({ "serverId": serverId, "entityId": entityId });
+        const ids = { "serverId": serverId, "entityId": entityId };
 
         const modal = module.exports.getModal({
-            customId: `StorageMonitorEdit${identifier}`,
+            customId: CustomId.make('StorageMonitorEdit', ids),
             title: Client.client.intlGet(guildId, 'editingOf', {
                 entity: entity.name.length > 18 ? `${entity.name.slice(0, 18)}..` : entity.name
             })
@@ -307,10 +308,10 @@ module.exports = {
     getTrackerEditModal(guildId, trackerId) {
         const instance = Client.client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
-        const identifier = JSON.stringify({ "trackerId": trackerId });
+        const ids = { "trackerId": trackerId };
 
         const modal = module.exports.getModal({
-            customId: `TrackerEdit${identifier}`,
+            customId: CustomId.make('TrackerEdit', ids),
             title: Client.client.intlGet(guildId, 'editingOf', {
                 entity: tracker.name.length > 18 ? `${tracker.name.slice(0, 18)}..` : tracker.name
             })
@@ -345,10 +346,10 @@ module.exports = {
     getTrackerAddPlayerModal(guildId, trackerId) {
         const instance = Client.client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
-        const identifier = JSON.stringify({ "trackerId": trackerId });
+        const ids = { "trackerId": trackerId };
 
         const modal = module.exports.getModal({
-            customId: `TrackerAddPlayer${identifier}`,
+            customId: CustomId.make('TrackerAddPlayer', ids),
             title: Client.client.intlGet(guildId, 'trackerAddPlayerDesc', { tracker: tracker.name })
         });
 
@@ -369,10 +370,10 @@ module.exports = {
     getTrackerRemovePlayerModal(guildId, trackerId) {
         const instance = Client.client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
-        const identifier = JSON.stringify({ "trackerId": trackerId });
+        const ids = { "trackerId": trackerId };
 
         const modal = module.exports.getModal({
-            customId: `TrackerRemovePlayer${identifier}`,
+            customId: CustomId.make('TrackerRemovePlayer', ids),
             title: Client.client.intlGet(guildId, 'trackerRemovePlayerDesc', { tracker: tracker.name })
         });
 

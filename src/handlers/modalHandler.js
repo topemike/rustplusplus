@@ -20,6 +20,8 @@
 
 const Discord = require('discord.js');
 
+const CustomId = require('../util/customId.js');
+
 const Battlemetrics = require('../structures/Battlemetrics');
 const Config = require('../../config');
 const Constants = require('../util/constants.js');
@@ -36,24 +38,32 @@ module.exports = async (client, interaction) => {
     const verifyId = Math.floor(100000 + Math.random() * 900000);
     client.logInteraction(interaction, verifyId, 'userModal');
 
+    const defer = async () => {
+        try {
+            if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+        }
+        catch (e) { /* already answered */ }
+    };
+
     if (instance.blacklist['discordIds'].includes(interaction.user.id) &&
         !interaction.member.permissions.has(Discord.PermissionsBitField.Flags.Administrator)) {
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'userPartOfBlacklist', {
             id: `${verifyId}`,
             user: `${interaction.user.username} (${interaction.user.id})`
         }));
+        await defer();
         return;
     }
 
     if (interaction.customId.startsWith('CustomTimersEdit')) {
-        const ids = JSON.parse(interaction.customId.replace('CustomTimersEdit', ''));
+        const ids = CustomId.parse('CustomTimersEdit', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
         const cargoShipEgressTime = parseInt(interaction.fields.getTextInputValue('CargoShipEgressTime'));
         const oilRigCrateUnlockTime = parseInt(interaction.fields.getTextInputValue('OilRigCrateUnlockTime'));
         const bradleyRespawnTime = parseInt(interaction.fields.getTextInputValue('BradleyRespawnTime'));
 
         if (!server) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -74,10 +84,20 @@ module.exports = async (client, interaction) => {
         }));
     }
     else if (interaction.customId.startsWith('ServerEdit')) {
-        const ids = JSON.parse(interaction.customId.replace('ServerEdit', ''));
+        const ids = CustomId.parse('ServerEdit', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
-        const battlemetricsId = interaction.fields.getTextInputValue('ServerBattlemetricsId');
+        const battlemetricsId = interaction.fields.getTextInputValue('ServerBattlemetricsId').trim();
 
+        /* Server deleted while the form was open */
+        if (!server) {
+            await defer();
+            return;
+        }
+
+        /* Answer first: looking the id up on BattleMetrics can take longer than 3 seconds */
+        await interaction.deferReply({ ephemeral: true });
+
+        let invalid = false;
         if (battlemetricsId !== server.battlemetricsId) {
             if (battlemetricsId === '') {
                 server.battlemetricsId = null;
@@ -89,11 +109,15 @@ module.exports = async (client, interaction) => {
             }
             else {
                 const bmInstance = new Battlemetrics(battlemetricsId);
-                await bmInstance.setup();
+                try { await bmInstance.setup(); }
+                catch (e) { /* treated as not found */ }
                 if (bmInstance.lastUpdateSuccessful) {
                     client.battlemetricsInstances[battlemetricsId] = bmInstance;
                     server.battlemetricsId = battlemetricsId;
                     server.connect = `connect ${bmInstance.server_ip}:${bmInstance.server_port}`;
+                }
+                else {
+                    invalid = true;
                 }
             }
         }
@@ -104,13 +128,18 @@ module.exports = async (client, interaction) => {
             value: `${server.battlemetricsId}`
         }));
 
-        await DiscordMessages.sendServerMessage(interaction.guildId, ids.serverId);
+        if (instance.serverList[ids.serverId]) await DiscordMessages.sendServerMessage(interaction.guildId, ids.serverId);
 
         /* To force search of player name via scrape */
         client.battlemetricsIntervalCounter = 0;
+
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(invalid ? 1 : 0, invalid ?
+            client.intlGet(guildId, 'battlemetricsIdInvalid', { id: battlemetricsId }) :
+            client.intlGet(guildId, 'battlemetricsIdSaved', { id: server.battlemetricsId || '-' })));
+        return;
     }
     else if (interaction.customId.startsWith('SmartSwitchEdit')) {
-        const ids = JSON.parse(interaction.customId.replace('SmartSwitchEdit', ''));
+        const ids = CustomId.parse('SmartSwitchEdit', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
         const smartSwitchName = interaction.fields.getTextInputValue('SmartSwitchName');
         const smartSwitchCommand = interaction.fields.getTextInputValue('SmartSwitchCommand');
@@ -123,7 +152,7 @@ module.exports = async (client, interaction) => {
         }
 
         if (!server || (server && !server.switches.hasOwnProperty(ids.entityId))) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -147,13 +176,13 @@ module.exports = async (client, interaction) => {
         await DiscordMessages.sendSmartSwitchMessage(guildId, ids.serverId, ids.entityId);
     }
     else if (interaction.customId.startsWith('GroupEdit')) {
-        const ids = JSON.parse(interaction.customId.replace('GroupEdit', ''));
+        const ids = CustomId.parse('GroupEdit', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
         const groupName = interaction.fields.getTextInputValue('GroupName');
         const groupCommand = interaction.fields.getTextInputValue('GroupCommand');
 
         if (!server || (server && !server.switchGroups.hasOwnProperty(ids.groupId))) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -173,18 +202,18 @@ module.exports = async (client, interaction) => {
         await DiscordMessages.sendSmartSwitchGroupMessage(interaction.guildId, ids.serverId, ids.groupId);
     }
     else if (interaction.customId.startsWith('GroupAddSwitch')) {
-        const ids = JSON.parse(interaction.customId.replace('GroupAddSwitch', ''));
+        const ids = CustomId.parse('GroupAddSwitch', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
         const switchId = interaction.fields.getTextInputValue('GroupAddSwitchId');
 
         if (!server || (server && !server.switchGroups.hasOwnProperty(ids.groupId))) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
         if (!Object.keys(server.switches).includes(switchId) ||
             server.switchGroups[ids.groupId].switches.includes(switchId)) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -199,12 +228,12 @@ module.exports = async (client, interaction) => {
         await DiscordMessages.sendSmartSwitchGroupMessage(interaction.guildId, ids.serverId, ids.groupId);
     }
     else if (interaction.customId.startsWith('GroupRemoveSwitch')) {
-        const ids = JSON.parse(interaction.customId.replace('GroupRemoveSwitch', ''));
+        const ids = CustomId.parse('GroupRemoveSwitch', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
         const switchId = interaction.fields.getTextInputValue('GroupRemoveSwitchId');
 
         if (!server || (server && !server.switchGroups.hasOwnProperty(ids.groupId))) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -247,14 +276,14 @@ module.exports = async (client, interaction) => {
         return;
     }
     else if (interaction.customId.startsWith('SmartAlarmEdit')) {
-        const ids = JSON.parse(interaction.customId.replace('SmartAlarmEdit', ''));
+        const ids = CustomId.parse('SmartAlarmEdit', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
         const smartAlarmName = interaction.fields.getTextInputValue('SmartAlarmName');
         const smartAlarmMessage = interaction.fields.getTextInputValue('SmartAlarmMessage');
         const smartAlarmCommand = interaction.fields.getTextInputValue('SmartAlarmCommand');
 
         if (!server || (server && !server.alarms.hasOwnProperty(ids.entityId))) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -295,12 +324,12 @@ module.exports = async (client, interaction) => {
         await DiscordMessages.sendSmartAlarmMessage(interaction.guildId, ids.serverId, ids.entityId);
     }
     else if (interaction.customId.startsWith('StorageMonitorEdit')) {
-        const ids = JSON.parse(interaction.customId.replace('StorageMonitorEdit', ''));
+        const ids = CustomId.parse('StorageMonitorEdit', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
         const storageMonitorName = interaction.fields.getTextInputValue('StorageMonitorName');
 
         if (!server || (server && !server.storageMonitors.hasOwnProperty(ids.entityId))) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -315,16 +344,19 @@ module.exports = async (client, interaction) => {
         await DiscordMessages.sendStorageMonitorMessage(interaction.guildId, ids.serverId, ids.entityId);
     }
     else if (interaction.customId.startsWith('TrackerEdit')) {
-        const ids = JSON.parse(interaction.customId.replace('TrackerEdit', ''));
+        const ids = CustomId.parse('TrackerEdit', interaction.customId, instance);
         const tracker = instance.trackers[ids.trackerId];
         const trackerName = interaction.fields.getTextInputValue('TrackerName');
         const trackerBattlemetricsId = interaction.fields.getTextInputValue('TrackerBattlemetricsId');
         const trackerClanTag = interaction.fields.getTextInputValue('TrackerClanTag');
 
         if (!tracker) {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
+
+        /* Answer first: a new BattleMetrics id is looked up, which can take longer than 3 seconds */
+        await defer();
 
         tracker.name = trackerName;
         if (trackerClanTag !== tracker.clanTag) {
@@ -342,7 +374,8 @@ module.exports = async (client, interaction) => {
             }
             else {
                 const bmInstance = new Battlemetrics(trackerBattlemetricsId);
-                await bmInstance.setup();
+                try { await bmInstance.setup(); }
+                catch (e) { /* not found */ }
                 if (bmInstance.lastUpdateSuccessful) {
                     client.battlemetricsInstances[trackerBattlemetricsId] = bmInstance;
                     tracker.battlemetricsId = trackerBattlemetricsId;
@@ -360,14 +393,15 @@ module.exports = async (client, interaction) => {
         }));
 
         await DiscordMessages.sendTrackerMessage(interaction.guildId, ids.trackerId);
+        return;
     }
     else if (interaction.customId.startsWith('TrackerAddPlayer')) {
-        const ids = JSON.parse(interaction.customId.replace('TrackerAddPlayer', ''));
+        const ids = CustomId.parse('TrackerAddPlayer', interaction.customId, instance);
         const tracker = instance.trackers[ids.trackerId];
         const id = interaction.fields.getTextInputValue('TrackerAddPlayerId').trim();
 
         if (!tracker || id === '') {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -425,12 +459,12 @@ module.exports = async (client, interaction) => {
         return;
     }
     else if (interaction.customId.startsWith('TrackerRemovePlayer')) {
-        const ids = JSON.parse(interaction.customId.replace('TrackerRemovePlayer', ''));
+        const ids = CustomId.parse('TrackerRemovePlayer', interaction.customId, instance);
         const tracker = instance.trackers[ids.trackerId];
         const id = interaction.fields.getTextInputValue('TrackerRemovePlayerId').trim();
 
         if (!tracker || id === '') {
-            interaction.deferUpdate();
+            await defer();
             return;
         }
 
@@ -472,5 +506,5 @@ module.exports = async (client, interaction) => {
         id: `${verifyId}`
     }));
 
-    interaction.deferUpdate();
+    await defer();
 }
