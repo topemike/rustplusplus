@@ -220,6 +220,7 @@ class Battlemetrics {
     async #request(api_call) {
         try {
             return await Axios.get(api_call, {
+                timeout: 30000,
                 headers: {
                     Authorization: `Bearer ${Config.battlemetrics.token}`,
                 }

@@ -23,10 +23,18 @@ const Axios = require('axios');
 const Constants = require('../util/constants.js');
 const Utils = require('../util/utils.js');
 
+/* Without a time limit a Steam page that never answers blocks the caller for hours (the death and
+   connection notices wait for the profile picture, and the team updates wait for the notices). */
+const TIMEOUT_MS = 10 * 1000;
+const PICTURE_CACHE_MS = 6 * 60 * 60 * 1000;
+const pictureCache = new Map();     /* steamId -> { png, at } */
+
 module.exports = {
+    TIMEOUT_MS: TIMEOUT_MS,
+    _pictureCache: pictureCache,
     scrape: async function (url) {
         try {
-            return await Axios.get(url);
+            return await Axios.get(url, { timeout: TIMEOUT_MS });
         }
         catch (e) {
             return {};
@@ -34,6 +42,9 @@ module.exports = {
     },
 
     scrapeSteamProfilePicture: async function (client, steamId) {
+        const cached = pictureCache.get(`${steamId}`);
+        if (cached && Date.now() - cached.at < PICTURE_CACHE_MS) return cached.png;
+
         const response = await module.exports.scrape(`${Constants.STEAM_PROFILES_URL}${steamId}`);
 
         if (response.status !== 200) {
@@ -43,8 +54,9 @@ module.exports = {
             return null;
         }
 
-        let png = response.data.match(/<img src="(.*_full.jpg)(.*?(?="))/);
+        let png = typeof response.data === 'string' ? response.data.match(/<img src="(.*_full.jpg)(.*?(?="))/) : null;
         if (png) {
+            pictureCache.set(`${steamId}`, { png: png[1], at: Date.now() });
             return png[1];
         }
 

@@ -49,7 +49,8 @@ function parseInput(raw) {
 
 async function steamIdFromVanity(vanity) {
     try {
-        const response = await Axios.get(`https://steamcommunity.com/id/${encodeURIComponent(vanity)}/?xml=1`);
+        const response = await Axios.get(`https://steamcommunity.com/id/${encodeURIComponent(vanity)}/?xml=1`,
+            { timeout: 15000 });
         const m = `${response.data}`.match(/<steamID64>(\d{17})<\/steamID64>/);
         return m ? m[1] : null;
     }
