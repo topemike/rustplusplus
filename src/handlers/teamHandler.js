@@ -178,6 +178,8 @@ module.exports = {
 
         for (const steamId of leftPlayers) {
             if (!once('member', steamId, false)) continue;
+            /* Out of the team: the next connection / disconnection is compared from scratch */
+            delete rustplus.teamNotified.online[steamId];
             const player = rustplus.team.getPlayer(steamId);
             const str = client.intlGet(guildId, 'playerLeftTheTeam', { name: player ? player.name : steamId });
             connectionNotice(steamId, str, Constants.COLOR_GREY);
@@ -187,6 +189,9 @@ module.exports = {
             for (const player of teamInfo.members) {
                 if (player.steamId.toString() === steamId) {
                     if (!once('member', steamId, true)) continue;
+                    /* What was announced before leaving does not count: a player who left the team
+                       offline and comes back online must have his next disconnection announced */
+                    rustplus.teamNotified.online[steamId] = !!player.isOnline;
                     const str = client.intlGet(guildId, 'playerJoinedTheTeam', { name: player.name });
                     connectionNotice(steamId, str, Constants.COLOR_ACTIVE);
                 }
