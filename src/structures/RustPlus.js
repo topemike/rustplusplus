@@ -286,6 +286,10 @@ class RustPlus extends RustPlusLib {
             return Client.client.intlGet(this.guildId, 'leaderNotConnected');
         }
 
+        /* The answer can be lost although it worked: the "team changed" message that comes with the new
+           leader closes the old leader's connection before its answer arrives */
+        if (this.team && this.team.leaderSteamId === `${steamId}`) return null;
+
         const error = response && response.error ? `${response.error}` :
             (response instanceof Error ? response.message : `${response}`);
         this.log(Client.client.intlGet(null, 'warningCap'), `Leader transfer to ${steamId} failed: ${error}`, 'warn');
