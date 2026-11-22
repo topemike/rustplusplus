@@ -23,6 +23,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 
 const QUEUE_ITEM_MS = 30 * 1000;
 const STALE_TEAM_MS = 3 * 60 * 1000;
+const RECENT_DEATH_S = 3 * 60;
 
 module.exports = {
     STALE_TEAM_MS: STALE_TEAM_MS,
@@ -60,14 +61,42 @@ module.exports = {
             rustplus.log(client.intlGet(null, 'warningCap'),
                 `Team not updated for ${Math.round((now - last) / 1000)} s: brought up to date without notices.`,
                 'warning');
+            /* Deaths of the last minutes are still real news: those are announced */
+            const recent = [];
+            const nowSeconds = now / 1000;
+            for (const member of (teamInfo.members || [])) {
+                const steamId = member.steamId.toString();
+                const deathTime = Number(member.deathTime) || 0;
+                const known = rustplus.teamNotified && rustplus.teamNotified.death[steamId];
+                const player = rustplus.team.getPlayer(steamId);
+                if (deathTime && nowSeconds - deathTime < RECENT_DEATH_S && deathTime !== known &&
+                    player && Number(player.deathTime) !== deathTime) {
+                    recent.push({ steamId: steamId, name: player.name, pos: player.pos });
+                }
+            }
             rustplus.team.updateTeam(teamInfo);
             module.exports.syncNotified(rustplus, teamInfo);
+            for (const dead of recent) {
+                await module.exports.announceDeath(rustplus, client, dead.steamId, dead.name, dead.pos);
+            }
         }
         else {
             await module.exports.handler(rustplus, client, teamInfo);
             rustplus.team.updateTeam(teamInfo);
         }
         rustplus.lastTeamUpdateAt = Date.now();
+    },
+
+    announceDeath: async function (rustplus, client, steamId, name, pos) {
+        const guildId = rustplus.guildId;
+        const instance = client.getInstance(guildId);
+        const location = !pos ? 'spawn' : pos.string;
+        const str = client.intlGet(guildId, 'playerJustDied', { name: name, location: location });
+        await DiscordMessages.sendActivityNotificationMessage(
+            guildId, rustplus.serverId, Constants.COLOR_INACTIVE, str, steamId);
+        if (instance.generalSettings.deathNotify) rustplus.sendInGameMessage(str);
+        rustplus.log(client.intlGet(null, 'infoCap'), str);
+        rustplus.updateDeaths(steamId, { name: name, location: pos });
     },
 
     /* What was "already announced" is set to the current state (after a silent update) */
@@ -153,19 +182,7 @@ module.exports = {
             for (const playerUpdated of teamInfo.members) {
                 if (player.steamId === playerUpdated.steamId.toString()) {
                     if (player.isGoneDead(playerUpdated) && newDeath(player.steamId, playerUpdated.deathTime)) {
-                        const location = player.pos === null ? 'spawn' : player.pos.string;
-                        const str = client.intlGet(guildId, 'playerJustDied', {
-                            name: player.name,
-                            location: location
-                        });
-                        await DiscordMessages.sendActivityNotificationMessage(
-                            guildId, serverId, Constants.COLOR_INACTIVE, str, player.steamId);
-                        if (instance.generalSettings.deathNotify) rustplus.sendInGameMessage(str);
-                        rustplus.log(client.intlGet(null, 'infoCap'), str);
-                        rustplus.updateDeaths(player.steamId, {
-                            name: player.name,
-                            location: player.pos
-                        });
+                        await module.exports.announceDeath(rustplus, client, player.steamId, player.name, player.pos);
                     }
 
                     if (player.isGoneAfk(playerUpdated)) {
