@@ -69,8 +69,28 @@ function heartbeat(rustplus, client) {
         `Polling OK. Team updated ${teamAge} s ago, game time ${gameTime}, operational ${!!rustplus.isOperational}.`);
 }
 
+/* After a reconnection the AFK and offline times go on from where they were (same server, < 30 min) */
+function restoreTeamState(rustplus, client) {
+    const all = client.previousTeamState;
+    const state = all ? all[rustplus.guildId] : null;
+    if (!state) return;
+    delete all[rustplus.guildId];
+    if (state.serverId !== rustplus.serverId || Date.now() - state.at > 30 * 60 * 1000) return;
+    for (const player of rustplus.team.players) {
+        const old = state.players[player.steamId];
+        if (!old) continue;
+        if (old.x === player.x && old.y === player.y && old.isOnline === player.isOnline && old.lastMovement) {
+            player.lastMovement = old.lastMovement;
+        }
+        if (!player.isOnline && old.isOnline === false && old.wentOfflineTime) {
+            player.wentOfflineTime = old.wentOfflineTime;
+        }
+    }
+}
+
 module.exports = {
     runStep: runStep,
+    restoreTeamState: restoreTeamState,
     pollingHandler: async function (rustplus, client) {
         /* A slow poll must not overlap the next one (duplicated messages) */
         if (rustplus.stopIfReplaced && rustplus.stopIfReplaced()) return;
@@ -136,6 +156,7 @@ module.exports = {
             rustplus.time = new Time(time.time, rustplus, client);
             rustplus.team = new Team(teamInfo.teamInfo, rustplus);
             rustplus.lastTeamUpdateAt = Date.now();
+            restoreTeamState(rustplus, client);
             rustplus.mapMarkers = new MapMarkers(mapMarkers.mapMarkers, rustplus, client);
         }
 
