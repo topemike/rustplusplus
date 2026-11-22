@@ -23,10 +23,20 @@ const Axios = require('axios');
 const Constants = require('../util/constants.js');
 const Utils = require('../util/utils.js');
 
+/* Without a time limit a Steam request that is never answered waits forever: the death/connection
+   notices wait for the profile picture, and with them the team updates and the whole polling (the bot
+   froze for 3 h this way). */
+const TIMEOUT_MS = 10 * 1000;
+/* Profile pictures barely change: one request per player and day, and none for a while after a failure */
+const PICTURE_OK_MS = 24 * 60 * 60 * 1000;
+const PICTURE_FAIL_MS = 10 * 60 * 1000;
+const pictureCache = new Map();     /* steamId -> { png, at, ok } */
+
 module.exports = {
+    TIMEOUT_MS: TIMEOUT_MS,
     scrape: async function (url) {
         try {
-            return await Axios.get(url);
+            return await Axios.get(url, { timeout: TIMEOUT_MS });
         }
         catch (e) {
             return {};
@@ -34,21 +44,23 @@ module.exports = {
     },
 
     scrapeSteamProfilePicture: async function (client, steamId) {
+        const cached = pictureCache.get(`${steamId}`);
+        if (cached && Date.now() - cached.at < (cached.ok ? PICTURE_OK_MS : PICTURE_FAIL_MS)) return cached.png;
+
         const response = await module.exports.scrape(`${Constants.STEAM_PROFILES_URL}${steamId}`);
 
-        if (response.status !== 200) {
+        if (response.status !== 200 || typeof response.data !== 'string') {
             client.log(client.intlGet(null, 'errorCap'), client.intlGet(null, 'failedToScrapeProfilePicture', {
                 link: `${Constants.STEAM_PROFILES_URL}${steamId}`
             }), 'error');
-            return null;
+            pictureCache.set(`${steamId}`, { png: cached ? cached.png : null, at: Date.now(), ok: false });
+            return cached ? cached.png : null;
         }
 
         let png = response.data.match(/<img src="(.*_full.jpg)(.*?(?="))/);
-        if (png) {
-            return png[1];
-        }
-
-        return null;
+        png = png ? png[1] : null;
+        pictureCache.set(`${steamId}`, { png: png, at: Date.now(), ok: true });
+        return png;
     },
 
     scrapeSteamProfileName: async function (client, steamId) {
@@ -81,7 +93,7 @@ module.exports = {
 
     scrapeWith: async function (url, headers) {
         try {
-            return await Axios.get(url, { headers: headers, timeout: 15000 });
+            return await Axios.get(url, { headers: headers, timeout: TIMEOUT_MS });
         }
         catch (e) {
             return e && e.response ? e.response : {};
