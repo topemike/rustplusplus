@@ -81,6 +81,8 @@ function restoreTeamState(rustplus, client) {
         if (!old) continue;
         if (old.x === player.x && old.y === player.y && old.isOnline === player.isOnline && old.lastMovement) {
             player.lastMovement = old.lastMovement;
+            /* Already AFK before the reconnection: not announced as "just went AFK" a second time */
+            player.afkSeconds = (Date.now() - new Date(old.lastMovement).getTime()) / 1000;
         }
         if (!player.isOnline && old.isOnline === false && old.wentOfflineTime) {
             player.wentOfflineTime = old.wentOfflineTime;
