@@ -24,6 +24,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const QUEUE_ITEM_MS = 30 * 1000;
 const STALE_TEAM_MS = 3 * 60 * 1000;
 const RECENT_DEATH_S = 3 * 60;
+const NOTICE_MS = 20 * 1000;
 
 module.exports = {
     STALE_TEAM_MS: STALE_TEAM_MS,
@@ -32,13 +33,19 @@ module.exports = {
         await module.exports.sendNotices(module.exports.checkChanges(rustplus, client, teamInfo));
     },
 
-    /* The notices of one change, in order. A failing one does not stop the others. */
+    /* The notices of one change, in order. A failing one does not stop the others, and one that does
+       not finish (a Discord call that hangs) does not hold back the next ones for more than NOTICE_MS. */
     sendNotices: async function (notices) {
         for (const notice of notices) {
-            try { await notice(); }
+            let timer = null;
+            const limit = new Promise((resolve) => { timer = setTimeout(resolve, NOTICE_MS); });
+            try { await Promise.race([Promise.resolve().then(notice), limit]); }
             catch (e) {
                 const Client = require('../../index.ts');
                 Client.client.log(Client.client.intlGet(null, 'errorCap'), `Team notice: ${e}`, 'error');
+            }
+            finally {
+                clearTimeout(timer);
             }
         }
     },
