@@ -64,6 +64,9 @@ function parseAuthToken(token) {
     }
 }
 
+/* Connection health limits (see connect) */
+const WATCHDOG = { handshakeMs: 30 * 1000, checkMs: 30 * 1000, silentMs: 3 * 60 * 1000 };
+
 /* Seconds to wait between connection attempts when the relay refuses the token (or it expired). */
 const SLOW_RETRY_MS = 5 * 60 * 1000;
 
@@ -200,19 +203,51 @@ function connect(rustplus, relay) {
         rustplus.emit('connecting');
 
         const address = `wss://${RELAY_HOST}/socket/${relay.relayServerId}?v=${Date.now()}`;
-        rustplus.websocket = new WebSocket(address, [RELAY_SUBPROTOCOL, b64url(relay.authToken)], {
-            origin: RELAY_ORIGIN
+        /* Without a handshake limit a relay that accepts the TCP connection and never answers the
+           upgrade leaves the bot "connecting" forever ('close' never fires, no reconnection). */
+        const ws = new WebSocket(address, [RELAY_SUBPROTOCOL, b64url(relay.authToken)], {
+            origin: RELAY_ORIGIN,
+            handshakeTimeout: WATCHDOG.handshakeMs
         });
+        rustplus.websocket = ws;
 
-        rustplus.websocket.on('open', () => {
+        /* Watchdog: requests sent and no answer at all for WATCHDOG.silentMs (half-open socket, relay
+           that lost the game server): the socket is closed, 'disconnected' reconnects. Pings keep
+           idle connections (leader connection) alive through NATs. */
+        let waitingSince = null;
+        const onRequest = () => { if (waitingSince === null) waitingSince = Date.now(); };
+        rustplus.on('request', onRequest);
+        let watchdog = null;
+        const stopWatchdog = () => {
+            if (watchdog) clearInterval(watchdog);
+            watchdog = null;
+            rustplus.removeListener('request', onRequest);
+        };
+        ws.markAnswered = () => { waitingSince = null; };
+
+        ws.on('open', () => {
+            waitingSince = null;
+            watchdog = setInterval(() => {
+                if (ws.readyState !== WebSocket.OPEN) return;
+                if (waitingSince !== null && Date.now() - waitingSince > WATCHDOG.silentMs) {
+                    if (typeof rustplus.log === 'function') {
+                        rustplus.log('WARNING', `Rust+ relay: no answer for ${Math.round((Date.now() - waitingSince) / 1000)} s, ` +
+                            'closing the connection to reconnect.', 'warn');
+                    }
+                    stopWatchdog();
+                    ws.terminate();
+                    return;
+                }
+                try { ws.ping(); } catch (e) { /* closing */ }
+            }, WATCHDOG.checkMs);
             rustplus.emit('connected');
         });
 
-        rustplus.websocket.on('error', (e) => {
+        ws.on('error', (e) => {
             rustplus.emit('error', e);
         });
 
-        rustplus.websocket.on('message', (data, isBinary) => {
+        ws.on('message', (data, isBinary) => {
             /* The relay may send text frames; only binary frames are protobuf AppMessages. */
             if (!isBinary) return;
 
@@ -228,6 +263,8 @@ function connect(rustplus, relay) {
                 return;
             }
 
+            if (message.response) ws.markAnswered();
+
             if (message.response && message.response.seq && rustplus.seqCallbacks[message.response.seq]) {
                 const callback = rustplus.seqCallbacks[message.response.seq];
                 const result = callback(message);
@@ -238,7 +275,8 @@ function connect(rustplus, relay) {
             rustplus.emit('message', message);
         });
 
-        rustplus.websocket.on('close', (code, reason) => {
+        ws.on('close', (code, reason) => {
+            stopWatchdog();
             rustplus.lastCloseCode = code;
             if (typeof rustplus.log === 'function') {
                 const why = reason && reason.length ? ` (${reason.toString().slice(0, 100)})` : '';
@@ -325,5 +363,5 @@ function pairingAddress(instance, body) {
 
 module.exports = {
     resolve, resolveDetailed, connect, pairingAddress, normaliseAuthToken, parseAuthToken,
-    refusalStatus, warnTokenProblem, clearTokenWarning, SLOW_RETRY_MS
+    refusalStatus, warnTokenProblem, clearTokenWarning, SLOW_RETRY_MS, WATCHDOG
 };
