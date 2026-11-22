@@ -58,6 +58,7 @@ module.exports = {
         if (!rustplus.team || !teamInfo) return;
         const last = rustplus.lastTeamUpdateAt;
         if (last && now - last > STALE_TEAM_MS) {
+            rustplus.teamApplyGeneration = (rustplus.teamApplyGeneration || 0) + 1;
             rustplus.log(client.intlGet(null, 'warningCap'),
                 `Team not updated for ${Math.round((now - last) / 1000)} s: brought up to date without notices.`,
                 'warning');
@@ -81,7 +82,11 @@ module.exports = {
             }
         }
         else {
+            /* If the notices take longer than the queue limit (QUEUE_ITEM_MS), the next change is
+               applied meanwhile: this older answer must not overwrite it when the notices end. */
+            const generation = rustplus.teamApplyGeneration = (rustplus.teamApplyGeneration || 0) + 1;
             await module.exports.handler(rustplus, client, teamInfo);
+            if (rustplus.teamApplyGeneration !== generation) return;
             rustplus.team.updateTeam(teamInfo);
         }
         rustplus.lastTeamUpdateAt = Date.now();
