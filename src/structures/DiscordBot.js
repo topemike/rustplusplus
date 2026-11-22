@@ -325,6 +325,19 @@ class DiscordBot extends Discord.Client {
                 try { content.timer.stop(); } catch (e) { /* already stopped */ }
             }
             previous.timers = new Object();
+            /* AFK / offline times survive the reconnection (see pollingHandler, first poll) */
+            if (previous.team && previous.serverId === serverId) {
+                try {
+                    if (!this.previousTeamState) this.previousTeamState = new Object();
+                    const players = new Object();
+                    for (const p of previous.team.players) {
+                        players[p.steamId] = { lastMovement: p.lastMovement, wentOfflineTime: p.wentOfflineTime,
+                            x: p.x, y: p.y, isOnline: p.isOnline };
+                    }
+                    this.previousTeamState[guildId] = { serverId: serverId, at: Date.now(), players: players };
+                }
+                catch (e) { /* not kept */ }
+            }
             previous.isDeleted = true;
             clearInterval(previous.pollingTaskId);
             try { previous.disconnect(); } catch (e) { /* already closed */ }
