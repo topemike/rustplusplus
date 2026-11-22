@@ -1208,8 +1208,7 @@ class RustPlus extends RustPlusLib {
 
         const teamInfo = await this.getTeamInfoAsync();
         if (!(await this.isResponseValid(teamInfo))) return null;
-        TeamHandler.handler(this, Client.client, teamInfo.teamInfo);
-        this.team.updateTeam(teamInfo.teamInfo);
+        await TeamHandler.enqueue(this, () => TeamHandler.apply(this, Client.client, teamInfo.teamInfo));
 
         /* After the refresh: the distances are measured from who wrote the command */
         const caller = this.team.getPlayer(callerSteamId);
@@ -2224,8 +2223,7 @@ class RustPlus extends RustPlusLib {
 
         const teamInfo = await this.getTeamInfoAsync();
         if (!(await this.isResponseValid(teamInfo))) return null;
-        TeamHandler.handler(this, Client.client, teamInfo.teamInfo);
-        this.team.updateTeam(teamInfo.teamInfo);
+        await TeamHandler.enqueue(this, () => TeamHandler.apply(this, Client.client, teamInfo.teamInfo));
 
         /* After the refresh: someone that just joined the team is in it now */
         const caller = this.team.getPlayer(callerSteamId);

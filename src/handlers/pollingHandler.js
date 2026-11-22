@@ -32,20 +32,68 @@ const TimeHandler = require('../handlers/timeHandler.js');
 const UpkeepBoardHandler = require('../handlers/upkeepBoardHandler.js');
 const VendingMachines = require('../handlers/vendingMachineHandler.js');
 
+const POLL_STUCK_MS = 2 * 60 * 1000;
+const STEP_TIMEOUT_MS = 45 * 1000;
+const HEARTBEAT_MS = 15 * 60 * 1000;
+
+/* Runs one poll step with a time limit. A failing or hanging step is logged and the poll goes on. */
+async function runStep(rustplus, client, name, fn) {
+    rustplus.pollingStep = name;
+    let timer = null;
+    const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => resolve('__timeout__'), STEP_TIMEOUT_MS);
+    });
+    try {
+        const result = await Promise.race([Promise.resolve().then(fn), timeout]);
+        if (result === '__timeout__') {
+            client.log(client.intlGet(null, 'warningCap'),
+                `Polling: step "${name}" took more than ${STEP_TIMEOUT_MS / 1000} s, skipped.`, 'warning');
+        }
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Polling step "${name}": ${e && e.stack ? e.stack : e}`, 'error');
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+
+/* A line in the log every 15 min: shows the polling is alive and how fresh the data is */
+function heartbeat(rustplus, client) {
+    const now = Date.now();
+    if (rustplus.lastHeartbeatAt && now - rustplus.lastHeartbeatAt < HEARTBEAT_MS) return;
+    rustplus.lastHeartbeatAt = now;
+    const teamAge = rustplus.lastTeamUpdateAt ? Math.round((now - rustplus.lastTeamUpdateAt) / 1000) : '-';
+    const gameTime = rustplus.time && rustplus.time.time !== undefined ? Number(rustplus.time.time).toFixed(2) : '-';
+    rustplus.log(client.intlGet(null, 'infoCap'),
+        `Polling OK. Team updated ${teamAge} s ago, game time ${gameTime}, operational ${!!rustplus.isOperational}.`);
+}
+
 module.exports = {
+    runStep: runStep,
     pollingHandler: async function (rustplus, client) {
         /* A slow poll must not overlap the next one (duplicated messages) */
-        if (rustplus.pollingBusy) return;
         if (rustplus.stopIfReplaced && rustplus.stopIfReplaced()) return;
+        if (rustplus.pollingBusy) {
+            /* A poll that never finishes would freeze team, time and devices for hours: give up on it */
+            if (Date.now() - (rustplus.pollingBusySince || 0) < POLL_STUCK_MS) return;
+            client.log(client.intlGet(null, 'warningCap'), `Polling: the previous poll was stuck for ` +
+                `${Math.round((Date.now() - rustplus.pollingBusySince) / 1000)} s at "${rustplus.pollingStep}", ` +
+                `starting a new one.`, 'warning');
+        }
         rustplus.pollingBusy = true;
+        rustplus.pollingBusySince = Date.now();
+        const myPoll = rustplus.pollingBusySince;
         try {
             await module.exports.poll(rustplus, client);
+            rustplus.lastPollOkAt = Date.now();
+            heartbeat(rustplus, client);
         }
         catch (e) {
             client.log(client.intlGet(null, 'errorCap'), `Polling: ${e && e.stack ? e.stack : e}`, 'error');
         }
         finally {
-            rustplus.pollingBusy = false;
+            if (rustplus.pollingBusySince === myPoll) rustplus.pollingBusy = false;
         }
         /* The first poll after connecting failed: it becomes operational when one completes */
         if (!rustplus.isOperational && typeof rustplus.markOperationalIfReady === 'function' &&
@@ -56,11 +104,12 @@ module.exports = {
 
     poll: async function (rustplus, client) {
         /* Poll information such as info, mapMarkers, teamInfo and time */
+        rustplus.pollingStep = 'requests';
         let info = await rustplus.getInfoAsync();
         if (!(await rustplus.isResponseValid(info))) return;
 
         /* The server is on and answering: confirm the held "not found" notices */
-        try {
+        await runStep(rustplus, client, 'deviceNotices', async () => {
             await require('../util/deviceNotices.js').verify(client, rustplus, async (type, serverId, entityId) => {
                 const fn = { switch: 'sendSmartSwitchNotFoundMessage', alarm: 'sendSmartAlarmNotFoundMessage',
                     storageMonitor: 'sendStorageMonitorNotFoundMessage' }[type];
@@ -70,10 +119,8 @@ module.exports = {
                     await require('./raidHandler.js').onAlarmLost(client, rustplus.guildId, entityId);
                 }
             });
-        }
-        catch (e) {
-            client.log(client.intlGet(null, 'errorCap'), `Device notices: ${e}`, 'error');
-        }
+        });
+        rustplus.pollingStep = 'requests';
         let mapMarkers = await rustplus.getMapMarkersAsync();
         if (!(await rustplus.isResponseValid(mapMarkers))) return;
         /* "Team changed" messages seen before the team request is sent (see message.js) */
@@ -88,6 +135,7 @@ module.exports = {
             rustplus.info = new Info(info.info);
             rustplus.time = new Time(time.time, rustplus, client);
             rustplus.team = new Team(teamInfo.teamInfo, rustplus);
+            rustplus.lastTeamUpdateAt = Date.now();
             rustplus.mapMarkers = new MapMarkers(mapMarkers.mapMarkers, rustplus, client);
         }
 
@@ -97,37 +145,30 @@ module.exports = {
     },
 
     handlers: async function (rustplus, client, info, mapMarkers, teamInfo, time, meta = {}) {
+        /* Each step has a time limit: one step that hangs (Discord, Rust+) must not freeze the rest */
+        const step = (name, fn) => runStep(rustplus, client, name, fn);
+
         /* Team processing is serialised with the "team changed" messages. If one arrived after this
            poll's team request was sent, this answer is older than what is already applied: skip it
            (the next poll catches up). */
-        await TeamHandler.enqueue(rustplus, async () => {
+        await step('team', () => TeamHandler.enqueue(rustplus, async () => {
             if (meta.teamSeq !== undefined && (rustplus.teamChangedSeq || 0) !== meta.teamSeq) return;
-            await TeamHandler.handler(rustplus, client, teamInfo.teamInfo);
-            rustplus.team.updateTeam(teamInfo.teamInfo);
-        });
+            await TeamHandler.apply(rustplus, client, teamInfo.teamInfo);
+        }));
 
-        await SmartSwitchHandler.handler(rustplus, client, time.time);
-        TimeHandler.handler(rustplus, client, time.time);
-        await VendingMachines.handler(rustplus, client, mapMarkers.mapMarkers);
+        await step('switches', () => SmartSwitchHandler.handler(rustplus, client, time.time));
+        await step('time', () => TimeHandler.handler(rustplus, client, time.time));
+        await step('vendingMachines', () => VendingMachines.handler(rustplus, client, mapMarkers.mapMarkers));
 
         rustplus.time.updateTime(time.time, meta.timeStamp);
         rustplus.info.updateInfo(info.info);
         rustplus.mapMarkers.updateMapMarkers(mapMarkers.mapMarkers);
-        try {
-            await MarketHandler.handler(rustplus, client);
-        }
-        catch (e) {
-            client.log(client.intlGet(null, 'errorCap'), `Market handler: ${e}`, 'error');
-        }
 
-        await InformationHandler.handler(rustplus);
-        await StorageMonitorHandler.handler(rustplus, client);
-        await SmartAlarmHandler.handler(rustplus, client);
-        try {
-            await UpkeepBoardHandler.handler(rustplus, client);
-        }
-        catch (e) {
-            client.log(client.intlGet(null, 'errorCap'), `Upkeep board: ${e}`, 'error');
-        }
+        await step('market', () => MarketHandler.handler(rustplus, client));
+        await step('information', () => InformationHandler.handler(rustplus));
+        await step('storageMonitors', () => StorageMonitorHandler.handler(rustplus, client));
+        await step('alarms', () => SmartAlarmHandler.handler(rustplus, client));
+        await step('upkeepBoard', () => UpkeepBoardHandler.handler(rustplus, client));
+        rustplus.pollingStep = 'done';
     },
 };

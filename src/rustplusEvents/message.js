@@ -76,9 +76,8 @@ async function messageBroadcastTeamChanged(rustplus, client, message) {
     try {
         await TeamHandler.enqueue(rustplus, async () => {
             if (!rustplus.team) return;     /* no team information yet: the next poll creates it */
-            await TeamHandler.handler(rustplus, client, teamInfo);
             const changed = rustplus.team.isLeaderSteamIdChanged(teamInfo);
-            rustplus.team.updateTeam(teamInfo);
+            await TeamHandler.apply(rustplus, client, teamInfo);
             if (changed) rustplus.updateLeaderRustPlusLiteInstance();
         });
     }
