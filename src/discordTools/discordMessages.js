@@ -41,9 +41,20 @@ module.exports = {
             await DiscordTools.getMessageById(guildId, channelId, messageId) : undefined;
 
         if (message !== undefined) {
-            return await Client.client.messageEdit(message, content);
+            try {
+                return await message.edit(content);
+            }
+            catch (e) {
+                if (!(e && e.code === 10008)) {
+                    Client.client.log(Client.client.intlGet(null, 'errorCap'),
+                        Client.client.intlGet(null, 'messageEditFailed', { error: e }), 'error');
+                    return undefined;
+                }
+                /* The message was deleted (it was still cached): send a new one, its id is saved */
+                try { message.channel.messages.cache.delete(messageId); } catch (err) { /* not cached */ }
+            }
         }
-        else {
+        {
             const channel = DiscordTools.getTextChannelById(guildId, channelId);
 
             if (!channel) {

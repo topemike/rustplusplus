@@ -162,7 +162,10 @@ class Time {
         if (!rate) return null;
         let hours = this.isDay() ? this.sunset - this.time : this.sunrise - this.time;
         if (hours < 0) hours += 24;
-        return hours / rate;
+        /* Counted from when the in-game time was read; data older than 2 minutes is not trusted */
+        const since = this._updatedAt !== undefined ? (Date.now() - this._updatedAt) / 1000 : 0;
+        if (since > 120) return null;
+        return Math.max(0, hours / rate - since);
     }
 
     getTimeTillDayOrNight(ignore = '') {
@@ -170,6 +173,7 @@ class Time {
         const seconds = this.secondsTillDayOrNight();
         if (seconds !== null) return TimeLib.secondsToFullScale(seconds, ignore);
         if (this.isTimeStopped()) return null;
+        if (this._updatedAt !== undefined && Date.now() - this._updatedAt > 120 * 1000) return null;
 
         if (!this.timeTillActive) {
             return null;

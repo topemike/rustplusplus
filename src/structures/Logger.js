@@ -58,6 +58,7 @@ class Logger {
 
     log(title, text, level) {
         let time = this.getTime();
+        if (level === 'warning') level = 'warn';    /* winston has no "warning" level */
 
         switch (this.type) {
             case 'default': {
