@@ -299,6 +299,23 @@ class DiscordBot extends Discord.Client {
             Path.join(__dirname, '..', 'templates/generalSettingsTemplate.json'), 'utf8'));
     }
 
+    /* Keeps the AFK / offline times of a connection that is going away, for the next connection to the
+       same server (pollingHandler.restoreTeamState). Called when the connection drops (disconnected.js)
+       and when it is replaced. */
+    rememberTeamState(rustplus) {
+        if (!rustplus || !rustplus.team) return;
+        try {
+            if (!this.previousTeamState) this.previousTeamState = new Object();
+            const players = new Object();
+            for (const p of rustplus.team.players) {
+                players[p.steamId] = { lastMovement: p.lastMovement, wentOfflineTime: p.wentOfflineTime,
+                    x: p.x, y: p.y, isOnline: p.isOnline };
+            }
+            this.previousTeamState[rustplus.guildId] = { serverId: rustplus.serverId, at: Date.now(), players: players };
+        }
+        catch (e) { /* not kept */ }
+    }
+
     createRustplusInstance(guildId, serverIp, appPort, steamId, playerToken) {
         const instance = this.getInstance(guildId);
         const serverId = `${serverIp}-${appPort}`;
@@ -326,18 +343,7 @@ class DiscordBot extends Discord.Client {
             }
             previous.timers = new Object();
             /* AFK / offline times survive the reconnection (see pollingHandler, first poll) */
-            if (previous.team && previous.serverId === serverId) {
-                try {
-                    if (!this.previousTeamState) this.previousTeamState = new Object();
-                    const players = new Object();
-                    for (const p of previous.team.players) {
-                        players[p.steamId] = { lastMovement: p.lastMovement, wentOfflineTime: p.wentOfflineTime,
-                            x: p.x, y: p.y, isOnline: p.isOnline };
-                    }
-                    this.previousTeamState[guildId] = { serverId: serverId, at: Date.now(), players: players };
-                }
-                catch (e) { /* not kept */ }
-            }
+            if (previous.serverId === serverId) this.rememberTeamState(previous);
             previous.isDeleted = true;
             clearInterval(previous.pollingTaskId);
             try { previous.disconnect(); } catch (e) { /* already closed */ }
