@@ -470,6 +470,17 @@ class RustPlus extends RustPlusLib {
         this.log(Client.client.intlGet(null, 'eventCap'), text);
     }
 
+    /* rustplus.js keeps the callback of a request that timed out for ever (one per unanswered request:
+       hours of a half-open connection leave thousands): it is removed when the request times out */
+    sendRequestAsync(data, timeoutMilliseconds = 10000) {
+        const promise = super.sendRequestAsync(data, timeoutMilliseconds);
+        const seq = this.seq;
+        promise.catch(() => {
+            if (this.seqCallbacks && this.seqCallbacks[seq]) delete this.seqCallbacks[seq];
+        });
+        return promise;
+    }
+
     replenishTokens() {
         this.tokens += TOKENS_REPLENISH;
         if (this.tokens > TOKENS_LIMIT) this.tokens = TOKENS_LIMIT;
