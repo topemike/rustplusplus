@@ -69,6 +69,21 @@ function heartbeat(rustplus, client) {
         `Polling OK. Team updated ${teamAge} s ago, game time ${gameTime}, operational ${!!rustplus.isOperational}.`);
 }
 
+/* Keeps the AFK and offline times of a connection that is going away (see restoreTeamState) */
+function saveTeamState(client, rustplus) {
+    if (!rustplus || !rustplus.team || !Array.isArray(rustplus.team.players)) return;
+    try {
+        if (!client.previousTeamState) client.previousTeamState = new Object();
+        const players = new Object();
+        for (const p of rustplus.team.players) {
+            players[p.steamId] = { lastMovement: p.lastMovement, wentOfflineTime: p.wentOfflineTime,
+                x: p.x, y: p.y, isOnline: p.isOnline };
+        }
+        client.previousTeamState[rustplus.guildId] = { serverId: rustplus.serverId, at: Date.now(), players: players };
+    }
+    catch (e) { /* not kept */ }
+}
+
 /* After a reconnection the AFK and offline times go on from where they were (same server, < 30 min) */
 function restoreTeamState(rustplus, client) {
     const all = client.previousTeamState;
@@ -90,6 +105,7 @@ function restoreTeamState(rustplus, client) {
 
 module.exports = {
     runStep: runStep,
+    saveTeamState: saveTeamState,
     restoreTeamState: restoreTeamState,
     pollingHandler: async function (rustplus, client) {
         /* A slow poll must not overlap the next one (duplicated messages) */

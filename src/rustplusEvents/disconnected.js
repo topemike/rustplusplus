@@ -59,6 +59,10 @@ module.exports = {
             try { timer.timer.stop(); } catch (e) { /* already stopped */ }
         }
         rustplus.timers = new Object();
+        /* The AFK and offline times go on after the automatic reconnection (pollingHandler, first poll) */
+        if (!rustplus.isDeleted && client.rustplusInstances[guildId] === rustplus) {
+            require('../handlers/pollingHandler.js').saveTeamState(client, rustplus);
+        }
         if (!rustplus.isDeleted && savedTimers.length > 0) {
             if (!client.pendingCustomTimers) client.pendingCustomTimers = new Object();
             client.pendingCustomTimers[guildId] = { serverId: serverId, timers: savedTimers };
