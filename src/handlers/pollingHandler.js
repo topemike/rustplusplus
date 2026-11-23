@@ -81,6 +81,33 @@ async function runStep(rustplus, client, name, fn) {
     }
 }
 
+/* Runs a Discord-side task without waiting for it; one at a time per task and connection */
+const BACKGROUND_STALE_MS = 5 * 60 * 1000;
+function background(rustplus, client, name, fn) {
+    if (!rustplus.backgroundBusy) rustplus.backgroundBusy = new Object();
+    const since = rustplus.backgroundBusy[name];
+    if (since) {
+        if (Date.now() - since < BACKGROUND_STALE_MS) {
+            rustplus.backgroundSkipped = (rustplus.backgroundSkipped || 0) + 1;
+            return;
+        }
+        client.log(client.intlGet(null, 'warningCap'),
+            `Discord task "${name}" has not finished for ${Math.round((Date.now() - since) / 1000)} s.`, 'warning');
+    }
+    const started = Date.now();
+    rustplus.backgroundBusy[name] = started;
+    Promise.resolve().then(fn).catch((e) => {
+        client.log(client.intlGet(null, 'errorCap'), `Discord task "${name}": ${e && e.stack ? e.stack : e}`, 'error');
+    }).finally(() => {
+        if (rustplus.backgroundBusy[name] === started) delete rustplus.backgroundBusy[name];
+        const took = Date.now() - started;
+        if (took > 30 * 1000) {
+            client.log(client.intlGet(null, 'warningCap'), `Discord task "${name}" took ${Math.round(took / 1000)} s.`,
+                'warning');
+        }
+    });
+}
+
 /* A line in the log every 15 min: shows the polling is alive and how fresh the data is */
 function heartbeat(rustplus, client) {
     const now = Date.now();
@@ -212,11 +239,15 @@ module.exports = {
         rustplus.info.updateInfo(info.info);
         rustplus.mapMarkers.updateMapMarkers(mapMarkers.mapMarkers);
 
-        await step('market', () => MarketHandler.handler(rustplus, client));
-        await step('information', () => InformationHandler.handler(rustplus));
-        await step('storageMonitors', () => StorageMonitorHandler.handler(rustplus, client));
         await step('alarms', () => SmartAlarmHandler.handler(rustplus, client));
-        await step('upkeepBoard', () => UpkeepBoardHandler.handler(rustplus, client));
+
+        /* Boards and device messages in Discord: they run on their own and never hold back the poll. If
+           the previous one has not finished (Discord slow or rate limited), this round is skipped
+           instead of queueing more Discord requests behind it. */
+        background(rustplus, client, 'market', () => MarketHandler.handler(rustplus, client));
+        background(rustplus, client, 'information', () => InformationHandler.handler(rustplus));
+        background(rustplus, client, 'storageMonitors', () => StorageMonitorHandler.handler(rustplus, client));
+        background(rustplus, client, 'upkeepBoard', () => UpkeepBoardHandler.handler(rustplus, client));
         rustplus.pollingStep = 'done';
     },
 };
