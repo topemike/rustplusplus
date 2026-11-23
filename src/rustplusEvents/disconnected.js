@@ -71,8 +71,14 @@ module.exports = {
         /* Was the disconnection unexpected? */
         if (client.activeRustplusInstances[guildId]) {
             if (!client.rustplusReconnecting[guildId]) {
-                await DiscordMessages.sendServerChangeStateMessage(guildId, serverId, 1);
-                await DiscordMessages.sendServerMessage(guildId, serverId, 2);
+                /* A Discord error here must never stop the reconnection below */
+                try {
+                    await DiscordMessages.sendServerChangeStateMessage(guildId, serverId, 1);
+                    await DiscordMessages.sendServerMessage(guildId, serverId, 2);
+                }
+                catch (e) {
+                    client.log(client.intlGet(null, 'errorCap'), `Disconnected, Discord notice: ${e}`, 'error');
+                }
             }
 
             /* Meanwhile someone may have pressed DISCONNECT / CONNECT or deleted the server */
@@ -83,6 +89,8 @@ module.exports = {
 
             rustplus.log(client.intlGet(null, 'reconnectingCap'), client.intlGet(null, 'reconnectingToServer'));
 
+            /* The next connection goes on with the AFK / offline times of this one */
+            if (typeof client.rememberTeamState === 'function') client.rememberTeamState(rustplus);
             delete client.rustplusInstances[guildId];
 
             if (client.rustplusReconnectTimers[guildId]) {

@@ -35,6 +35,29 @@ const VendingMachines = require('../handlers/vendingMachineHandler.js');
 const POLL_STUCK_MS = 2 * 60 * 1000;
 const STEP_TIMEOUT_MS = 45 * 1000;
 const HEARTBEAT_MS = 15 * 60 * 1000;
+const NO_ANSWER_RECONNECT_MS = 3 * 60 * 1000;
+
+/* A real answer of the server (also an error answer), not a timeout / closed socket / local token wait */
+function isServerAnswer(response) {
+    return !!response && typeof response === 'object' && !(response instanceof Error) &&
+        Object.getPrototypeOf(response) !== Object.prototype;
+}
+
+/* The socket can stay open while nothing comes back (half-open connection, a stuck relay session):
+   without this the bot waits on it for ever, every request timing out. Closing it starts the normal
+   reconnection (disconnected.js). Returns true when it closed the connection. */
+function checkNoAnswer(rustplus, client, response, now = Date.now()) {
+    if (isServerAnswer(response) || !rustplus.lastAnswerAt) {
+        rustplus.lastAnswerAt = now;
+        return false;
+    }
+    if (now - rustplus.lastAnswerAt < NO_ANSWER_RECONNECT_MS) return false;
+    client.log(client.intlGet(null, 'warningCap'), `Rust+: no answer for ` +
+        `${Math.round((now - rustplus.lastAnswerAt) / 1000)} s on an open connection: reconnecting.`, 'warning');
+    rustplus.lastAnswerAt = now;
+    try { rustplus.disconnect(); } catch (e) { /* already closed */ }
+    return true;
+}
 
 /* Runs one poll step with a time limit. A failing or hanging step is logged and the poll goes on. */
 async function runStep(rustplus, client, name, fn) {
@@ -69,8 +92,31 @@ function heartbeat(rustplus, client) {
         `Polling OK. Team updated ${teamAge} s ago, game time ${gameTime}, operational ${!!rustplus.isOperational}.`);
 }
 
+/* After a reconnection the AFK and offline times go on from where they were (same server, < 30 min) */
+function restoreTeamState(rustplus, client) {
+    const all = client.previousTeamState;
+    const state = all ? all[rustplus.guildId] : null;
+    if (!state) return;
+    delete all[rustplus.guildId];
+    if (state.serverId !== rustplus.serverId || Date.now() - state.at > 30 * 60 * 1000) return;
+    for (const player of rustplus.team.players) {
+        const old = state.players[player.steamId];
+        if (!old) continue;
+        if (old.x === player.x && old.y === player.y && old.isOnline === player.isOnline && old.lastMovement) {
+            player.lastMovement = old.lastMovement;
+            /* Already AFK before the reconnection: not announced as "just went AFK" a second time */
+            player.afkSeconds = (Date.now() - new Date(old.lastMovement).getTime()) / 1000;
+        }
+        if (!player.isOnline && old.isOnline === false && old.wentOfflineTime) {
+            player.wentOfflineTime = old.wentOfflineTime;
+        }
+    }
+}
+
 module.exports = {
     runStep: runStep,
+    checkNoAnswer: checkNoAnswer,
+    restoreTeamState: restoreTeamState,
     pollingHandler: async function (rustplus, client) {
         /* A slow poll must not overlap the next one (duplicated messages) */
         if (rustplus.stopIfReplaced && rustplus.stopIfReplaced()) return;
@@ -106,6 +152,7 @@ module.exports = {
         /* Poll information such as info, mapMarkers, teamInfo and time */
         rustplus.pollingStep = 'requests';
         let info = await rustplus.getInfoAsync();
+        if (checkNoAnswer(rustplus, client, info)) return;
         if (!(await rustplus.isResponseValid(info))) return;
 
         /* The server is on and answering: confirm the held "not found" notices */
@@ -136,6 +183,7 @@ module.exports = {
             rustplus.time = new Time(time.time, rustplus, client);
             rustplus.team = new Team(teamInfo.teamInfo, rustplus);
             rustplus.lastTeamUpdateAt = Date.now();
+            restoreTeamState(rustplus, client);
             rustplus.mapMarkers = new MapMarkers(mapMarkers.mapMarkers, rustplus, client);
         }
 

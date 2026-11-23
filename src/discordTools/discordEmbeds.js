@@ -95,8 +95,9 @@ module.exports = {
         const server = instance.serverList[serverId];
         let hoster = Client.client.intlGet(guildId, 'unknown');
         if (credentials.hasOwnProperty(server.steamId)) {
-            hoster = await DiscordTools.getUserById(guildId, credentials[server.steamId].discord_user_id);
-            hoster = hoster.user.username;
+            /* Discord may fail to give the member (API error, the user left): the embed is still sent */
+            const member = await DiscordTools.getUserById(guildId, credentials[server.steamId].discord_user_id);
+            if (member && member.user) hoster = member.user.username;
         }
 
         let description = '';
@@ -563,13 +564,14 @@ module.exports = {
         const server = instance.serverList[serverId];
         const entity = server.storageMonitors[entityId];
         const credentials = InstanceUtils.readCredentialsFile(guildId);
-        const user = await DiscordTools.getUserById(guildId, credentials[server.steamId].discord_user_id);
+        const credential = credentials[server.steamId];
+        const user = credential ? await DiscordTools.getUserById(guildId, credential.discord_user_id) : undefined;
         const grid = entity.location !== null ? ` (${entity.location})` : '';
 
         return module.exports.getEmbed({
             title: Client.client.intlGet(guildId, 'smartDeviceNotFound', {
                 device: `${entity.name}${grid}`,
-                user: user.user.username
+                user: user && user.user ? user.user.username : Client.client.intlGet(guildId, 'unknown')
             }),
             color: Constants.COLOR_INACTIVE,
             description: `**ID** \`${entityId}\``,
@@ -584,13 +586,14 @@ module.exports = {
         const server = instance.serverList[serverId];
         const entity = instance.serverList[serverId].switches[entityId];
         const credentials = InstanceUtils.readCredentialsFile(guildId);
-        const user = await DiscordTools.getUserById(guildId, credentials[server.steamId].discord_user_id);
+        const credential = credentials[server.steamId];
+        const user = credential ? await DiscordTools.getUserById(guildId, credential.discord_user_id) : undefined;
         const grid = entity.location !== null ? ` (${entity.location})` : '';
 
         return module.exports.getEmbed({
             title: Client.client.intlGet(guildId, 'smartDeviceNotFound', {
                 device: `${entity.name}${grid}`,
-                user: user.user.username
+                user: user && user.user ? user.user.username : Client.client.intlGet(guildId, 'unknown')
             }),
             color: Constants.COLOR_INACTIVE,
             description: `**ID** \`${entityId}\``,
@@ -605,13 +608,14 @@ module.exports = {
         const server = instance.serverList[serverId];
         const entity = server.alarms[entityId];
         const credentials = InstanceUtils.readCredentialsFile(guildId);
-        const user = await DiscordTools.getUserById(guildId, credentials[server.steamId].discord_user_id);
+        const credential = credentials[server.steamId];
+        const user = credential ? await DiscordTools.getUserById(guildId, credential.discord_user_id) : undefined;
         const grid = entity.location !== null ? ` (${entity.location})` : '';
 
         return module.exports.getEmbed({
             title: Client.client.intlGet(guildId, 'smartDeviceNotFound', {
                 device: `${entity.name}${grid}`,
-                user: user.user.username
+                user: user && user.user ? user.user.username : Client.client.intlGet(guildId, 'unknown')
             }),
             color: Constants.COLOR_INACTIVE,
             description: `**ID** \`${entityId}\``,

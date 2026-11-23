@@ -286,6 +286,10 @@ class RustPlus extends RustPlusLib {
             return Client.client.intlGet(this.guildId, 'leaderNotConnected');
         }
 
+        /* The answer can be lost although it worked: the "team changed" message that comes with the new
+           leader closes the old leader's connection before its answer arrives */
+        if (this.team && this.team.leaderSteamId === `${steamId}`) return null;
+
         const error = response && response.error ? `${response.error}` :
             (response instanceof Error ? response.message : `${response}`);
         this.log(Client.client.intlGet(null, 'warningCap'), `Leader transfer to ${steamId} failed: ${error}`, 'warn');
@@ -464,6 +468,17 @@ class RustPlus extends RustPlusLib {
             await DiscordVoice.sendDiscordVoiceMessage(this.guildId, text);
         }
         this.log(Client.client.intlGet(null, 'eventCap'), text);
+    }
+
+    /* rustplus.js keeps the callback of a request that timed out for ever (one per unanswered request:
+       hours of a half-open connection leave thousands): it is removed when the request times out */
+    sendRequestAsync(data, timeoutMilliseconds = 10000) {
+        const promise = super.sendRequestAsync(data, timeoutMilliseconds);
+        const seq = this.seq;
+        promise.catch(() => {
+            if (this.seqCallbacks && this.seqCallbacks[seq]) delete this.seqCallbacks[seq];
+        });
+        return promise;
     }
 
     replenishTokens() {

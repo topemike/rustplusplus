@@ -299,6 +299,31 @@ class DiscordBot extends Discord.Client {
             Path.join(__dirname, '..', 'templates/generalSettingsTemplate.json'), 'utf8'));
     }
 
+    /* Keeps the AFK / offline times of a connection that is going away, for the next connection to the
+       same server (pollingHandler.restoreTeamState). Called when the connection drops (disconnected.js)
+       and when it is replaced. */
+    rememberTeamState(rustplus) {
+        if (!rustplus) return;
+        /* The deaths / connections / events history (!death, !connection, !events) too */
+        if (!this.previousHistory) this.previousHistory = new Object();
+        this.previousHistory[rustplus.guildId] = {
+            serverId: rustplus.serverId, allConnections: rustplus.allConnections,
+            playerConnections: rustplus.playerConnections, allDeaths: rustplus.allDeaths,
+            playerDeaths: rustplus.playerDeaths, events: rustplus.events
+        };
+        if (!rustplus.team) return;
+        try {
+            if (!this.previousTeamState) this.previousTeamState = new Object();
+            const players = new Object();
+            for (const p of rustplus.team.players) {
+                players[p.steamId] = { lastMovement: p.lastMovement, wentOfflineTime: p.wentOfflineTime,
+                    x: p.x, y: p.y, isOnline: p.isOnline };
+            }
+            this.previousTeamState[rustplus.guildId] = { serverId: rustplus.serverId, at: Date.now(), players: players };
+        }
+        catch (e) { /* not kept */ }
+    }
+
     createRustplusInstance(guildId, serverIp, appPort, steamId, playerToken) {
         const instance = this.getInstance(guildId);
         const serverId = `${serverIp}-${appPort}`;
@@ -325,12 +350,22 @@ class DiscordBot extends Discord.Client {
                 try { content.timer.stop(); } catch (e) { /* already stopped */ }
             }
             previous.timers = new Object();
+            /* AFK / offline times survive the reconnection (see pollingHandler, first poll) */
+            if (previous.serverId === serverId) this.rememberTeamState(previous);
             previous.isDeleted = true;
             clearInterval(previous.pollingTaskId);
             try { previous.disconnect(); } catch (e) { /* already closed */ }
         }
 
         let rustplus = new RustPlus(guildId, serverIp, appPort, steamId, playerToken);
+        /* Same server: the history of deaths / connections / events goes on (it was lost on every
+           reconnection: "!death" said there were none) */
+        const history = this.previousHistory ? this.previousHistory[guildId] : null;
+        if (history && history.serverId === serverId) {
+            for (const key of ['allConnections', 'playerConnections', 'allDeaths', 'playerDeaths', 'events']) {
+                if (history[key]) rustplus[key] = history[key];
+            }
+        }
         /* Timed-command timers are kept per Discord server: they survive the reconnect */
         require('../util/switchTimers.js').bind(this, rustplus);
         if (carriedTimers.length > 0) {
