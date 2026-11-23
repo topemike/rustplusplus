@@ -83,89 +83,29 @@ module.exports = {
 
         let wipeDetected = false;
         try {
-            if (client.rustplusMaps.hasOwnProperty(guildId)) {
-                if (client.isJpgImageChanged(guildId, map.map)) {
-                    wipeDetected = true;
-                    rustplus.map = new Map(map.map, rustplus);
-
-                    await rustplus.map.writeMap(false, true);
-                    await DiscordMessages.sendServerWipeDetectedMessage(guildId, serverId);
-                    await DiscordMessages.sendInformationMapMessage(guildId);
-                }
-                else {
-                    rustplus.map = new Map(map.map, rustplus);
-
-                    await rustplus.map.writeMap(false, true);
-                    await DiscordMessages.sendInformationMapMessage(guildId);
-                }
+            if (client.rustplusMaps.hasOwnProperty(guildId) && client.isJpgImageChanged(guildId, map.map)) {
+                wipeDetected = true;
             }
-            else {
-                rustplus.map = new Map(map.map, rustplus);
-
-                await rustplus.map.writeMap(false, true);
-                await DiscordMessages.sendInformationMapMessage(guildId);
-            }
+            rustplus.map = new Map(map.map, rustplus);
+            await rustplus.map.writeMap(false, true);
         }
         catch (e) {
             client.log(client.intlGet(null, 'errorCap'), `Connected, map: ${e}`, 'error');
         }
 
-        if (client.rustplusReconnecting[guildId]) {
+        const wasReconnecting = !!client.rustplusReconnecting[guildId];
+        if (wasReconnecting) {
             client.rustplusReconnecting[guildId] = false;
 
             if (client.rustplusReconnectTimers[guildId]) {
                 clearTimeout(client.rustplusReconnectTimers[guildId]);
                 client.rustplusReconnectTimers[guildId] = null;
             }
-
-            await optional(client, 'state message', () => DiscordMessages.sendServerChangeStateMessage(guildId, serverId, 0));
         }
 
-        await optional(client, 'server message', () => DiscordMessages.sendServerMessage(guildId, serverId, null));
-
-        /* Setup Smart Devices: one broken device / channel must not abort the connection */
-        for (const setup of ['SetupSwitches', 'SetupSwitchGroups', 'SetupAlarms', 'SetupStorageMonitors']) {
-            if (rustplus.stopIfReplaced()) return;
-            await optional(client, setup, () => require(`../discordTools/${setup}`)(client, rustplus));
-        }
-        rustplus.isNewConnection = false;
-        await optional(client, 'markers', () => rustplus.loadMarkers());
-
-        /* After a wipe, offer to remove the devices of the previous wipe */
-        try {
-            if (wipeDetected) {
-                await ServerLifecycle.sendWipeCleanupOffer(client, guildId, serverId);
-                /* The Deep Sea cycle starts again after a wipe */
-                const wipedInstance = client.getInstance(guildId);
-                /* The base is somewhere else after a wipe */
-                const wipedServer = wipedInstance.serverList[serverId];
-                if (wipedServer && (wipedServer.deepSea || wipedServer.baseLocation)) {
-                    delete wipedServer.deepSea;
-                    delete wipedServer.baseLocation;
-                    client.setInstance(guildId, wipedInstance);
-                }
-            }
-        }
-        catch (e) {
-            client.log(client.intlGet(null, 'errorCap'), `Server lifecycle: ${e}`, 'error');
-        }
-
-        /* Moved to another server: offer to remove everything about the previous ones */
-        try {
-            const lastInstance = client.getInstance(guildId);
-            const previous = lastInstance.lastConnectedServer;
-            if (previous !== serverId) {
-                /* Changing server already deleted the previous ones (CONNECT asks before) */
-                lastInstance.lastConnectedServer = serverId;
-                client.setInstance(guildId, lastInstance);
-            }
-        }
-        catch (e) {
-            client.log(client.intlGet(null, 'errorCap'), `Server change: ${e}`, 'error');
-        }
-
-        /* Operational only once the first poll produced team/time/info/map markers; if it did not,
-           pollingHandler retries it on every interval and marks it operational then */
+        /* The Rust+ side first: polling (team, time, switches, alarms) starts right away. Operational only
+           once the first poll produced team/time/info/map markers; if it did not, pollingHandler retries
+           it on every interval and marks it operational then. */
         rustplus.awaitingFirstData = true;
         await optional(client, 'first poll', () => PollingHandler.pollingHandler(rustplus, client));
         if (rustplus.stopIfReplaced()) return;
@@ -177,8 +117,69 @@ module.exports = {
                 'First poll incomplete (no team/time/info/map markers yet): retrying on the next interval.',
                 'warn');
         }
+
+        /* The Discord side (map, server and device messages...) runs on its own: a slow or rate limited
+           Discord must not keep the polling from starting */
+        discordSide(rustplus, client, guildId, serverId, wipeDetected, wasReconnecting).catch((e) => {
+            client.log(client.intlGet(null, 'errorCap'), `Connected, Discord messages: ${e && e.stack ? e.stack : e}`,
+                'error');
+        });
     },
 };
+
+async function discordSide(rustplus, client, guildId, serverId, wipeDetected, wasReconnecting) {
+    if (wipeDetected) {
+        await optional(client, 'wipe message', () => DiscordMessages.sendServerWipeDetectedMessage(guildId, serverId));
+    }
+    await optional(client, 'map message', () => DiscordMessages.sendInformationMapMessage(guildId));
+
+    if (wasReconnecting) {
+        await optional(client, 'state message', () => DiscordMessages.sendServerChangeStateMessage(guildId, serverId, 0));
+    }
+
+    await optional(client, 'server message', () => DiscordMessages.sendServerMessage(guildId, serverId, null));
+
+    /* Setup Smart Devices: one broken device / channel must not abort the connection */
+    for (const setup of ['SetupSwitches', 'SetupSwitchGroups', 'SetupAlarms', 'SetupStorageMonitors']) {
+        if (rustplus.stopIfReplaced()) return;
+        await optional(client, setup, () => require(`../discordTools/${setup}`)(client, rustplus));
+    }
+    rustplus.isNewConnection = false;
+    await optional(client, 'markers', () => rustplus.loadMarkers());
+
+    /* After a wipe, offer to remove the devices of the previous wipe */
+    try {
+        if (wipeDetected) {
+            await ServerLifecycle.sendWipeCleanupOffer(client, guildId, serverId);
+            /* The Deep Sea cycle starts again after a wipe */
+            const wipedInstance = client.getInstance(guildId);
+            /* The base is somewhere else after a wipe */
+            const wipedServer = wipedInstance.serverList[serverId];
+            if (wipedServer && (wipedServer.deepSea || wipedServer.baseLocation)) {
+                delete wipedServer.deepSea;
+                delete wipedServer.baseLocation;
+                client.setInstance(guildId, wipedInstance);
+            }
+        }
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Server lifecycle: ${e}`, 'error');
+    }
+
+    /* Moved to another server: offer to remove everything about the previous ones */
+    try {
+        const lastInstance = client.getInstance(guildId);
+        const previous = lastInstance.lastConnectedServer;
+        if (previous !== serverId) {
+            /* Changing server already deleted the previous ones (CONNECT asks before) */
+            lastInstance.lastConnectedServer = serverId;
+            client.setInstance(guildId, lastInstance);
+        }
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Server change: ${e}`, 'error');
+    }
+}
 
 /* Runs an optional step of the connection; an error is logged and the connection goes on */
 async function optional(client, what, fn) {

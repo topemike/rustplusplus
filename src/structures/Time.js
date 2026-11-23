@@ -95,12 +95,49 @@ class Time {
         /* When the in-game clock last moved (a server with time progression turned off never does) */
         if (this._advancedAt === undefined || time.time !== this.time) this._advancedAt = now;
         this._updatedAt = now;
+        const hadTime = typeof this.time === 'number';
+        const wasDay = hadTime ? this.isDay() : null;
         this.measureSpeed(time, now);
         this.dayLengthMinutes = time.dayLengthMinutes;
         this.timeScale = time.timeScale;
         this.sunrise = time.sunrise;
         this.sunset = time.sunset;
         this.time = time.time;
+        if (hadTime && wasDay !== this.isDay()) this.logTransition(now);
+        this.recordPrediction(now);
+    }
+
+    /* What the bot predicted, kept for 15 min: checked in the log when day or night really starts */
+    recordPrediction(now) {
+        if (!this._predictions) this._predictions = [];
+        let seconds = null;
+        try { seconds = this.secondsTillDayOrNight(now); } catch (e) { seconds = null; }
+        if (seconds !== null) this._predictions.push({ at: now, eta: now + seconds * 1000, day: this.isDay() });
+        while (this._predictions.length && now - this._predictions[0].at > 15 * 60 * 1000) this._predictions.shift();
+    }
+
+    logTransition(now) {
+        try {
+            const fmt = (ms) => new Date(ms).toISOString().slice(11, 19);
+            const before = (this._predictions || []).filter(p => p.day !== this.isDay());
+            const pick = (ago) => {
+                let best = null;
+                for (const p of before) if (now - p.at >= ago && (!best || p.at > best.at)) best = p;
+                return best;
+            };
+            const parts = [];
+            for (const ago of [10, 5, 1]) {
+                const p = pick(ago * 60 * 1000);
+                if (p) parts.push(`${ago} min before it said ${fmt(p.eta)} (${Math.round((p.eta - now) / 1000)} s off)`);
+            }
+            const sp = this._speed || {};
+            const rate = (r) => r ? `${(r * 60).toFixed(3)} h/min` : '-';
+            this.rustplus.log(this.client.intlGet(null, 'infoCap'),
+                `${this.isDay() ? 'Day' : 'Night'} started at ${fmt(now)} (game ${Number(this.time).toFixed(2)}, ` +
+                `sunrise ${this.sunrise}, sunset ${this.sunset}; speed day ${rate(sp.day)}, night ${rate(sp.night)}). ` +
+                (parts.length ? parts.join('; ') : 'No earlier prediction.'));
+        }
+        catch (e) { /* only a log line */ }
     }
 
     /*
@@ -125,6 +162,15 @@ class Time {
         const rate = hours / seconds;                           /* in-game hours per real second */
         const old = this._speed[key];
         this._speed[key] = old ? old * 0.9 + rate * 0.1 : rate;
+
+        /* The clock does not go at the same speed all day (Rust's time curve: faster in the morning and
+           evening, slower at midday): the speed is also learned per half hour of game time */
+        if (!this._speed.bins) this._speed.bins = new Array(Time.BINS).fill(null);
+        let mid = last.time + hours / 2;
+        if (mid >= 24) mid -= 24;
+        const bin = Math.floor(mid * Time.BINS / 24) % Time.BINS;
+        const oldBin = this._speed.bins[bin];
+        this._speed.bins[bin] = oldBin ? oldBin * 0.7 + rate * 0.3 : rate;
         if (!this._speedSavedAt || now - this._speedSavedAt > 5 * 60 * 1000) {
             this._speedSavedAt = now;
             try {
@@ -143,10 +189,53 @@ class Time {
         try {
             const instance = this.client.getInstance(this.rustplus.guildId);
             const server = instance.serverList[this.rustplus.serverId];
-            if (server && server.daySpeed) return { day: server.daySpeed.day || null, night: server.daySpeed.night || null };
+            if (server && server.daySpeed) {
+                const bins = Array.isArray(server.daySpeed.bins) && server.daySpeed.bins.length === Time.BINS ?
+                    server.daySpeed.bins : new Array(Time.BINS).fill(null);
+                return { day: server.daySpeed.day || null, night: server.daySpeed.night || null, bins: bins };
+            }
         }
         catch (e) { /* none saved */ }
-        return { day: null, night: null };
+        return { day: null, night: null, bins: new Array(Time.BINS).fill(null) };
+    }
+
+    /* Speed at a game time: learned for that half hour, else the nearest learned half hours of the same
+       part (day / night), else the average of that part */
+    rateAt(gameTime, isDay) {
+        const bins = this._speed.bins || [];
+        const bin = Math.floor(gameTime * Time.BINS / 24) % Time.BINS;
+        if (bins[bin]) return bins[bin];
+        const sameSide = (b) => {
+            const t = (b + 0.5) * 24 / Time.BINS;
+            return isDay === (t >= this.sunrise && t < this.sunset);
+        };
+        for (let d = 1; d <= 4; d++) {
+            const a = (bin + d) % Time.BINS, b = (bin - d + Time.BINS) % Time.BINS;
+            const ra = bins[a] && sameSide(a) ? bins[a] : null, rb = bins[b] && sameSide(b) ? bins[b] : null;
+            if (ra && rb) return (ra + rb) / 2;
+            if (ra || rb) return ra || rb;
+        }
+        /* Not learned near here yet: the average of what is learned for that part of the day */
+        let sum = 0, n = 0;
+        for (let b = 0; b < Time.BINS; b++) if (bins[b] && sameSide(b)) { sum += bins[b]; n++; }
+        if (n >= 4) return sum / n;
+        return isDay ? this._speed.day : this._speed.night;
+    }
+
+    /* The in-game time now (the last reading moved forward at the learned speed) */
+    currentTime(nowMs = Date.now()) {
+        if (typeof this.time !== 'number' || this._updatedAt === undefined || this.isTimeStopped()) return this.time;
+        if (!this._speed) this._speed = this.loadSpeed();
+        let left = Math.min(120, Math.max(0, (nowMs - this._updatedAt) / 1000)), t = this.time;
+        while (left > 0) {
+            const day = t >= this.sunrise && t < this.sunset;
+            const rate = this.rateAt(t % 24, day);
+            if (!rate) return this.time;
+            const dt = Math.min(left, 1);
+            t += rate * dt; if (t >= 24) t -= 24;
+            left -= dt;
+        }
+        return t;
     }
 
     /* Real seconds until sunset (by day) or sunrise (by night), or null while it is not known */
@@ -155,17 +244,31 @@ class Time {
         return (this._updatedAt - this._advancedAt) > Time.STOPPED_AFTER_MS;
     }
 
-    secondsTillDayOrNight() {
+    secondsTillDayOrNight(nowMs = Date.now()) {
         if (this.isTimeStopped()) return null;     /* the clock does not move: no day/night change */
         if (!this._speed) this._speed = this.loadSpeed();
-        const rate = this.isDay() ? this._speed.day : this._speed.night;
-        if (!rate) return null;
-        let hours = this.isDay() ? this.sunset - this.time : this.sunrise - this.time;
+        const isDay = this.isDay();
+        if (!(isDay ? this._speed.day : this._speed.night)) return null;
+        let hours = isDay ? this.sunset - this.time : this.sunrise - this.time;
         if (hours < 0) hours += 24;
         /* Counted from when the in-game time was read; data older than 2 minutes is not trusted */
-        const since = this._updatedAt !== undefined ? (Date.now() - this._updatedAt) / 1000 : 0;
+        const since = this._updatedAt !== undefined ? (nowMs - this._updatedAt) / 1000 : 0;
         if (since > 120) return null;
-        return Math.max(0, hours / rate - since);
+
+        /* Half hour by half hour, each at its own speed */
+        const step = 24 / Time.BINS;
+        let t = this.time, left = hours, seconds = 0;
+        while (left > 1e-9) {
+            const binEnd = (Math.floor(t / step) + 1) * step;
+            const seg = Math.min(left, binEnd - t);
+            const rate = this.rateAt(t % 24, isDay);
+            if (!rate) return null;
+            seconds += seg / rate;
+            left -= seg;
+            t += seg;
+            if (t >= 24) t -= 24;
+        }
+        return Math.max(0, seconds - since);
     }
 
     getTimeTillDayOrNight(ignore = '') {
@@ -199,5 +302,7 @@ class Time {
 
 /* In-game clock unchanged for longer than this (real time): time progression is off */
 Time.STOPPED_AFTER_MS = 5 * 60 * 1000;
+/* Speed learned per half hour of game time */
+Time.BINS = 48;
 
 module.exports = Time;
