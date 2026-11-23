@@ -95,12 +95,49 @@ class Time {
         /* When the in-game clock last moved (a server with time progression turned off never does) */
         if (this._advancedAt === undefined || time.time !== this.time) this._advancedAt = now;
         this._updatedAt = now;
+        const hadTime = typeof this.time === 'number';
+        const wasDay = hadTime ? this.isDay() : null;
         this.measureSpeed(time, now);
         this.dayLengthMinutes = time.dayLengthMinutes;
         this.timeScale = time.timeScale;
         this.sunrise = time.sunrise;
         this.sunset = time.sunset;
         this.time = time.time;
+        if (hadTime && wasDay !== this.isDay()) this.logTransition(now);
+        this.recordPrediction(now);
+    }
+
+    /* What the bot predicted, kept for 15 min: checked in the log when day or night really starts */
+    recordPrediction(now) {
+        if (!this._predictions) this._predictions = [];
+        let seconds = null;
+        try { seconds = this.secondsTillDayOrNight(now); } catch (e) { seconds = null; }
+        if (seconds !== null) this._predictions.push({ at: now, eta: now + seconds * 1000, day: this.isDay() });
+        while (this._predictions.length && now - this._predictions[0].at > 15 * 60 * 1000) this._predictions.shift();
+    }
+
+    logTransition(now) {
+        try {
+            const fmt = (ms) => new Date(ms).toISOString().slice(11, 19);
+            const before = (this._predictions || []).filter(p => p.day !== this.isDay());
+            const pick = (ago) => {
+                let best = null;
+                for (const p of before) if (now - p.at >= ago && (!best || p.at > best.at)) best = p;
+                return best;
+            };
+            const parts = [];
+            for (const ago of [10, 5, 1]) {
+                const p = pick(ago * 60 * 1000);
+                if (p) parts.push(`${ago} min before it said ${fmt(p.eta)} (${Math.round((p.eta - now) / 1000)} s off)`);
+            }
+            const sp = this._speed || {};
+            const rate = (r) => r ? `${(r * 60).toFixed(3)} h/min` : '-';
+            this.rustplus.log(this.client.intlGet(null, 'infoCap'),
+                `${this.isDay() ? 'Day' : 'Night'} started at ${fmt(now)} (game ${Number(this.time).toFixed(2)}, ` +
+                `sunrise ${this.sunrise}, sunset ${this.sunset}; speed day ${rate(sp.day)}, night ${rate(sp.night)}). ` +
+                (parts.length ? parts.join('; ') : 'No earlier prediction.'));
+        }
+        catch (e) { /* only a log line */ }
     }
 
     /*
@@ -155,7 +192,7 @@ class Time {
         return (this._updatedAt - this._advancedAt) > Time.STOPPED_AFTER_MS;
     }
 
-    secondsTillDayOrNight() {
+    secondsTillDayOrNight(nowMs = Date.now()) {
         if (this.isTimeStopped()) return null;     /* the clock does not move: no day/night change */
         if (!this._speed) this._speed = this.loadSpeed();
         const rate = this.isDay() ? this._speed.day : this._speed.night;
@@ -163,7 +200,7 @@ class Time {
         let hours = this.isDay() ? this.sunset - this.time : this.sunrise - this.time;
         if (hours < 0) hours += 24;
         /* Counted from when the in-game time was read; data older than 2 minutes is not trusted */
-        const since = this._updatedAt !== undefined ? (Date.now() - this._updatedAt) / 1000 : 0;
+        const since = this._updatedAt !== undefined ? (nowMs - this._updatedAt) / 1000 : 0;
         if (since > 120) return null;
         return Math.max(0, hours / rate - since);
     }
