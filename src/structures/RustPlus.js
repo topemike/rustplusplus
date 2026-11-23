@@ -2532,7 +2532,8 @@ class RustPlus extends RustPlusLib {
     }
 
     getCommandTime(isInfoChannel = false) {
-        const time = Timer.convertDecimalToHoursMinutes(this.time.time);
+        const time = Timer.convertDecimalToHoursMinutes(
+            typeof this.time.currentTime === 'function' ? this.time.currentTime() : this.time.time);
         if (isInfoChannel) {
             return [time, this.time.getTimeTillDayOrNight('s')];
         }
