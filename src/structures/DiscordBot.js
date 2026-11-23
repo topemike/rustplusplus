@@ -169,6 +169,19 @@ class DiscordBot extends Discord.Client {
     }
 
     build() {
+        /* Discord rate limits in the log (once a minute per route): they explain slow boards/messages */
+        try {
+            const seen = new Object();
+            this.rest.on('rateLimited', (info) => {
+                const key = `${info.method} ${info.route}`;
+                if (seen[key] && Date.now() - seen[key] < 60 * 1000) return;
+                seen[key] = Date.now();
+                this.log(this.intlGet(null, 'warningCap'), `Discord rate limit: ${key}, wait ` +
+                    `${Math.round((info.retryAfter || info.timeToReset || 0) / 1000)} s` +
+                    `${info.global ? ' (GLOBAL)' : ''}${info.scope ? `, scope ${info.scope}` : ''}.`, 'warning');
+            });
+        }
+        catch (e) { /* older discord.js */ }
         this.login(Config.discord.token).catch(error => {
             switch (error.code) {
                 case 502: {
