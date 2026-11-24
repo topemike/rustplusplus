@@ -85,6 +85,9 @@ module.exports = {
 			return;
 		}
 		await interaction.deferReply({ ephemeral: true });
+		/* Deleting many messages and drawing them again can take minutes: say so at once */
+		await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(0,
+			client.intlGet(interaction.guildId, 'resetWorking')));
 
 		const guild = DiscordTools.getGuild(interaction.guildId);
 

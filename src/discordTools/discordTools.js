@@ -262,6 +262,12 @@ module.exports = {
 
     clearTextChannel: async function (guildId, channelId, numberOfMessages) {
         const channel = module.exports.getTextChannelById(guildId, channelId);
+        /* Forget what was last sent to the messages of this channel (they are being deleted) */
+        try {
+            const states = require('./discordMessages.js')._editStates;
+            for (const key of Object.keys(states)) if (key.startsWith(`${channelId}/`)) delete states[key];
+        }
+        catch (e) { /* nothing remembered */ }
 
         if (channel) {
             for (let messagesLeft = numberOfMessages; messagesLeft > 0; messagesLeft -= 100) {

@@ -54,6 +54,16 @@ function contentHash(content) {
     }
 }
 
+function stillThere(message) {
+    try {
+        const cache = message.channel && message.channel.messages && message.channel.messages.cache;
+        return !cache || typeof cache.has !== 'function' || cache.has(message.id);
+    }
+    catch (e) {
+        return false;
+    }
+}
+
 async function doEdit(guildId, channelId, messageId, content) {
     if (DiscordTools.deletedByBot && DiscordTools.deletedByBot.has(`${messageId}`)) return undefined;
     const message = await DiscordTools.getMessageById(guildId, channelId, messageId);
@@ -147,7 +157,10 @@ module.exports = {
             state.next = { content, hash };
             return await new Promise((resolve) => state.waiters.push(resolve));
         }
-        if (state.hash === hash && state.message && Date.now() - state.at < SAME_CONTENT_REFRESH_MS) {
+        /* Same content as the last edit, and the message is still there (a deleted message leaves the
+           channel cache: then it is sent again) */
+        if (state.hash === hash && state.message && Date.now() - state.at < SAME_CONTENT_REFRESH_MS &&
+            stillThere(state.message)) {
             return state.message;
         }
 
