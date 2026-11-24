@@ -30,7 +30,44 @@ const DiscordSelectMenus = require('./discordSelectMenus.js');
 const DiscordTools = require('./discordTools.js');
 const Scrape = require('../util/scrape.js');
 
+const GONE = Symbol('gone');
+const SAME_CONTENT_REFRESH_MS = 10 * 60 * 1000;
+const editStates = new Object();
+
+/* What a message shows (embeds without their timestamp, buttons, image names) */
+function contentHash(content) {
+    try {
+        const plain = (x) => (x && typeof x.toJSON === 'function') ? x.toJSON() : x;
+        const embeds = (content.embeds || []).map(e => { const j = Object.assign({}, plain(e)); delete j.timestamp; return j; });
+        const components = (content.components || []).map(plain);
+        const files = (content.files || []).map(f => (f && (f.name || (f.attachment && Path.basename(String(f.attachment))))) || '?');
+        return JSON.stringify([content.content || null, embeds, components, files]);
+    }
+    catch (e) {
+        return `${Math.random()}`;  /* cannot compare: always send */
+    }
+}
+
+async function doEdit(guildId, channelId, messageId, content) {
+    const message = await DiscordTools.getMessageById(guildId, channelId, messageId);
+    if (message === undefined) return GONE;
+    try {
+        return await message.edit(module.exports.withoutReuploads(message, content));
+    }
+    catch (e) {
+        if (e && e.code === 10008) {
+            /* The message was deleted (it was still cached): a new one is sent, its id is saved */
+            try { message.channel.messages.cache.delete(messageId); } catch (err) { /* not cached */ }
+            return GONE;
+        }
+        Client.client.log(Client.client.intlGet(null, 'errorCap'),
+            Client.client.intlGet(null, 'messageEditFailed', { error: e }), 'error');
+        return undefined;
+    }
+}
+
 module.exports = {
+    _editStates: editStates,
     /**
      *  Editing a message with the same images it already has: the images are not uploaded again
      *  (Discord keeps the attachments of a message when an edit does not mention them). Every edit
@@ -59,38 +96,77 @@ module.exports = {
 
     sendMessage: async function (guildId, content, messageId, channelId, interaction = null) {
         if (interaction) {
+            /* The message changed outside editMessage(): forget what was last sent to it */
+            try {
+                if (interaction.message) delete editStates[`${interaction.message.channelId}/${interaction.message.id}`];
+                if (messageId) delete editStates[`${channelId}/${messageId}`];
+            }
+            catch (e) { /* nothing remembered */ }
             await Client.client.interactionUpdate(interaction, content);
             return;
         }
 
-        let message = messageId !== null ?
-            await DiscordTools.getMessageById(guildId, channelId, messageId) : undefined;
+        if (messageId !== null && messageId !== undefined) {
+            const edited = await module.exports.editMessage(guildId, channelId, messageId, content);
+            if (edited !== GONE) return edited;
+        }
 
-        if (message !== undefined) {
-            try {
-                return await message.edit(module.exports.withoutReuploads(message, content));
+        const channel = DiscordTools.getTextChannelById(guildId, channelId);
+        if (!channel) {
+            Client.client.log(Client.client.intlGet(null, 'errorCap'),
+                Client.client.intlGet(null, 'couldNotGetChannelWithId', { id: channelId }), 'error');
+            return;
+        }
+        return await Client.client.messageSend(channel, content);
+    },
+
+    /**
+     *  Edits a message, with two rules that keep the number of Discord requests low (Discord answers
+     *  them one after another per channel; when more come in than it serves, they pile up for hours):
+     *  - an edit with exactly the same content as the last one is not sent (refreshed every 10 min);
+     *  - one edit at a time per message: edits that come while one is on its way are merged, only
+     *    the newest content is sent after it.
+     *  Returns GONE if the message no longer exists (a new one has to be sent).
+     */
+    editMessage: async function (guildId, channelId, messageId, content) {
+        const key = `${channelId}/${messageId}`;
+        const state = editStates[key] || (editStates[key] = { busy: false, next: null, waiters: [], hash: null, at: 0, message: null });
+        const hash = contentHash(content);
+
+        if (state.busy) {
+            state.next = { content, hash };
+            return await new Promise((resolve) => state.waiters.push(resolve));
+        }
+        if (state.hash === hash && state.message && Date.now() - state.at < SAME_CONTENT_REFRESH_MS) {
+            return state.message;
+        }
+
+        state.busy = true;
+        let result;
+        try {
+            result = await doEdit(guildId, channelId, messageId, content);
+            if (result && result !== GONE) {
+                state.hash = hash; state.at = Date.now(); state.message = result;
             }
-            catch (e) {
-                if (!(e && e.code === 10008)) {
-                    Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                        Client.client.intlGet(null, 'messageEditFailed', { error: e }), 'error');
-                    return undefined;
-                }
-                /* The message was deleted (it was still cached): send a new one, its id is saved */
-                try { message.channel.messages.cache.delete(messageId); } catch (err) { /* not cached */ }
+            else if (result === GONE) {
+                delete editStates[key];
             }
         }
-        {
-            const channel = DiscordTools.getTextChannelById(guildId, channelId);
-
-            if (!channel) {
-                Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                    Client.client.intlGet(null, 'couldNotGetChannelWithId', { id: channelId }), 'error');
-                return;
+        finally {
+            state.busy = false;
+            if (state.next && editStates[key] === state) {
+                const next = state.next, waiters = state.waiters;
+                state.next = null; state.waiters = [];
+                module.exports.editMessage(guildId, channelId, messageId, next.content).then(
+                    (r) => { for (const w of waiters) w(r); }, () => { for (const w of waiters) w(undefined); });
             }
-
-            return await Client.client.messageSend(channel, content);
+            else if (state.waiters.length) {
+                const waiters = state.waiters;
+                state.waiters = []; state.next = null;
+                for (const w of waiters) w(result);
+            }
         }
+        return result;
     },
 
     sendServerMessage: async function (guildId, serverId, state = null, interaction = null) {

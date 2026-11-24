@@ -622,6 +622,12 @@ class DiscordBot extends Discord.Client {
     }
 
     async interactionUpdate(interaction, content) {
+        /* The message changes here: discordMessages.editMessage() must not think it still shows its last edit */
+        try {
+            const states = require('../discordTools/discordMessages.js')._editStates;
+            if (states && interaction.message) delete states[`${interaction.message.channelId}/${interaction.message.id}`];
+        }
+        catch (e) { /* nothing remembered */ }
         try {
             return await interaction.update(content);
         }
