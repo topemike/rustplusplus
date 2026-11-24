@@ -31,6 +31,7 @@ module.exports = async (client, rustplus) => {
         await DiscordTools.clearTextChannel(guildId, instance.channelId.storageMonitors, 100);
     }
 
+    const decayingNow = [];
     for (const entityId in instance.serverList[serverId].storageMonitors) {
         const entity = instance.serverList[serverId].storageMonitors[entityId];
         const info = await rustplus.getEntityInfoAsync(entityId);
@@ -58,7 +59,10 @@ module.exports = async (client, rustplus) => {
                 if (info.entityInfo.payload.capacity === Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY) {
                     entity.type = 'toolCupboard';
                     if (info.entityInfo.payload.protectionExpiry === 0) {
+                        /* It started decaying while the bot was not connected: the notice is still due */
+                        const wasDecaying = entity.decaying === true;
                         entity.decaying = true;
+                        if (!wasDecaying) decayingNow.push(entityId);
                     }
                     else {
                         entity.decaying = false;
@@ -75,5 +79,14 @@ module.exports = async (client, rustplus) => {
         }
 
         await DiscordMessages.sendStorageMonitorMessage(guildId, serverId, entityId);
+    }
+
+    for (const entityId of decayingNow) {
+        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        if (!entity) continue;
+        await DiscordMessages.sendDecayingNotificationMessage(guildId, serverId, entityId);
+        if (entity.inGame) {
+            rustplus.sendInGameMessage(client.intlGet(guildId, 'isDecaying', { device: entity.name }));
+        }
     }
 };

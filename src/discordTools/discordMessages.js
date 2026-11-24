@@ -784,3 +784,69 @@ module.exports = {
         await Client.client.interactionEditReply(interaction, content);
     },
 }
+/*
+ *  One update at a time per Discord message owner (a device, a group, a tracker, the server, each
+ *  #information message). Two updates of the same device that both find its message missing (after
+ *  /reset, or while it is first posted) would otherwise both post a new one: the copy that is not
+ *  remembered is never updated again and stays when the device is deleted. Here the second update
+ *  waits for the first and then sees the message it posted. An update that is already waiting with
+ *  the same arguments is not queued twice (it reads the newest state when it runs).
+ *  Updates answering a button or form (interaction) are not queued: they must answer within 3 s
+ *  and only edit the message that was clicked.
+ */
+const ownerQueues = {};
+const OWNER_WAIT_MAX_MS = 90 * 1000;   /* a stuck update does not block the next ones for ever */
+
+function argsSignature(args) {
+    return args.map((v) => {
+        if (v === null || v === undefined) return String(v);
+        if (typeof v !== 'object') return `${typeof v}:${v}`;
+        if (v.guildId !== undefined) return `rustplus:${v.guildId}:${v.serverId}`;
+        return '[object]';
+    }).join('|');
+}
+
+function serialPerOwner(name, keyOf, interactionIndex) {
+    const original = module.exports[name];
+    module.exports[name] = function (...args) {
+        if (interactionIndex !== null && args[interactionIndex]) return original.apply(this, args);
+        const key = keyOf(args);
+        const signature = argsSignature(args);
+        const q = ownerQueues[key] || (ownerQueues[key] = { tail: Promise.resolve(), waiting: null, waitingSig: null });
+        if (q.waiting && q.waitingSig === signature) return q.waiting;
+
+        const job = q.tail.then(() => {
+            if (q.waiting === job) { q.waiting = null; q.waitingSig = null; }
+            return new Promise((resolve) => {
+                const timer = setTimeout(() => resolve(undefined), OWNER_WAIT_MAX_MS);
+                Promise.resolve().then(() => original.apply(this, args)).then(
+                    (r) => { clearTimeout(timer); resolve(r); },
+                    (e) => {
+                        clearTimeout(timer);
+                        Client.client.log(Client.client.intlGet(null, 'errorCap'), `${name}: ${e}`, 'error');
+                        resolve(undefined);
+                    });
+            });
+        });
+        q.waiting = job; q.waitingSig = signature;
+        const tail = job.then(() => {
+            if (ownerQueues[key] === q && q.tail === tail) delete ownerQueues[key];
+        });
+        q.tail = tail;
+        return job;
+    };
+}
+
+const guildOf = (a) => (a && a.guildId !== undefined ? a.guildId : a);
+serialPerOwner('sendServerMessage', (a) => `server/${a[0]}/${a[1]}`, 3);
+serialPerOwner('sendTrackerMessage', (a) => `tracker/${a[0]}/${a[1]}`, 2);
+serialPerOwner('sendSmartSwitchMessage', (a) => `switch/${a[0]}/${a[1]}/${a[2]}`, 3);
+serialPerOwner('sendSmartAlarmMessage', (a) => `alarm/${a[0]}/${a[1]}/${a[2]}`, 3);
+serialPerOwner('sendStorageMonitorMessage', (a) => `storage/${a[0]}/${a[1]}/${a[2]}`, 3);
+serialPerOwner('sendSmartSwitchGroupMessage', (a) => `group/${a[0]}/${a[1]}/${a[2]}`, 3);
+serialPerOwner('sendUpdateMapInformationMessage', (a) => `info/${guildOf(a[0])}/map`, null);
+serialPerOwner('sendUpdateServerInformationMessage', (a) => `info/${guildOf(a[0])}/server`, null);
+serialPerOwner('sendUpdateEventInformationMessage', (a) => `info/${guildOf(a[0])}/event`, null);
+serialPerOwner('sendUpdateTeamInformationMessage', (a) => `info/${guildOf(a[0])}/team`, null);
+serialPerOwner('sendUpdateBattlemetricsOnlinePlayersInformationMessage',
+    (a) => `info/${guildOf(a[0])}/battlemetrics/${a[1]}`, null);

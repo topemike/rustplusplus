@@ -364,18 +364,41 @@ async function sendReminder(client, guildId, incident) {
     if (!message || !message.id) return;
     /* LO VEO or the end of the raid came while it was being posted: it is not needed any more */
     if (incident.acknowledgedBy || incident.endedAt) {
-        try { await DiscordTools.deleteMessageById(guildId, channelId, message.id); }
-        catch (e) { /* already gone */ }
+        await deleteLater(guildId, channelId, message.id);
         return;
     }
     incident.reminderId = message.id;
 }
 
+/* Reminders whose delete failed (Discord down or slow): retried on every tick until they are gone,
+   so no old @everyone reminder is left behind */
+const leftoverReminders = [];
+
+async function deleteLater(guildId, channelId, messageId) {
+    let ok = false;
+    try { ok = await DiscordTools.deleteMessageById(guildId, channelId, messageId); }
+    catch (e) { ok = false; }
+    if (!ok && !leftoverReminders.some(r => r.messageId === messageId)) {
+        leftoverReminders.push({ guildId, channelId, messageId, tries: 0 });
+    }
+    return ok;
+}
+
+async function retryLeftoverReminders() {
+    for (const r of leftoverReminders.slice()) {
+        let ok = false;
+        try { ok = await DiscordTools.deleteMessageById(r.guildId, r.channelId, r.messageId); }
+        catch (e) { ok = false; }
+        r.tries++;
+        if (ok || r.tries > 200) leftoverReminders.splice(leftoverReminders.indexOf(r), 1);
+    }
+}
+
 async function deleteReminder(guildId, incident) {
     if (!incident.reminderId) return;
-    try { await DiscordTools.deleteMessageById(guildId, incident.channelId, incident.reminderId); }
-    catch (e) { /* already gone */ }
+    const id = incident.reminderId;
     incident.reminderId = null;
+    await deleteLater(guildId, incident.channelId, id);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -506,6 +529,7 @@ async function trigger(client, rustplus, guildId, serverId, entityId, alarm, isS
  */
 async function tick(client, now = Date.now()) {
     const s = settings();
+    if (leftoverReminders.length) await retryLeftoverReminders();
     for (const [guildId, incident] of Object.entries(incidents)) {
         if (incident.endedAt) {
             if (pendingActions[guildId]) await runPendingActions(client, guildId, now);
