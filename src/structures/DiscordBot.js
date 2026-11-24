@@ -196,9 +196,22 @@ class DiscordBot extends Discord.Client {
                         }
                     }
                     if (Date.now() - stats.since > 15 * 60 * 1000) {
+                        let loop = '';
+                        try {
+                            if (!this.loopDelay) {
+                                this.loopDelay = require('perf_hooks').monitorEventLoopDelay({ resolution: 50 });
+                                this.loopDelay.enable();
+                            }
+                            else {
+                                loop = `; event loop delay max ${Math.round(this.loopDelay.max / 1e6)} ms, ` +
+                                    `p99 ${Math.round(this.loopDelay.percentile(99) / 1e6)} ms`;
+                                this.loopDelay.reset();
+                            }
+                        }
+                        catch (e) { /* not available */ }
                         this.log(this.intlGet(null, 'infoCap'), `Discord requests (15 min): ${stats.n}, ` +
                             `slow (>10 s) ${stats.slow}, failed ${stats.failed}, slowest ${Math.round(stats.max / 1000)} s ` +
-                            `(${stats.maxRoute}).`);
+                            `(${stats.maxRoute})${loop}.`);
                         Object.assign(stats, { n: 0, slow: 0, max: 0, maxRoute: '', failed: 0, since: Date.now() });
                     }
                 }
