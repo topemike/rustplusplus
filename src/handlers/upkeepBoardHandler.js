@@ -46,6 +46,9 @@ function getTcList(instance, rustplus) {
             name: entity.name,
             location: entity.location,
             reachable: entity.reachable !== false && !!content && content.capacity !== 0,
+            status: rustplus.storageMonitorStatus ? rustplus.storageMonitorStatus[entityId] : undefined,
+            notConnected: !!content && content.capacity === 0 && entity.reachable !== false,
+            notRead: !content && entity.reachable !== false,
             expiry: content && content.expiry ? content.expiry : 0,
             breakdown: content ? UpkeepRates.breakdown(entity, content.items, content.expiry) : null
         });
@@ -64,7 +67,14 @@ function hoursMinutes(ms) {
 
 function line(client, guildId, tc, now) {
     const where = tc.location ? ` (${tc.location})` : '';
-    if (!tc.reachable) return client.intlGet(guildId, 'upkeepBoardNoData', { name: tc.name, where: where });
+    if (!tc.reachable) {
+        /* Why there is no data: each case has its own fix */
+        const key = tc.status === 'missing' ? 'upkeepBoardMissing' :
+            tc.status === 'noAccess' ? 'upkeepBoardNoAccess' :
+            tc.notConnected ? 'upkeepBoardNotConnected' :
+            tc.notRead ? 'upkeepBoardNotRead' : 'upkeepBoardNoData';
+        return client.intlGet(guildId, key, { name: tc.name, where: where });
+    }
     if (!tc.expiry) return client.intlGet(guildId, 'upkeepBoardDecaying', { name: tc.name, where: where });
     const left = tc.expiry * 1000 - now;
     const icon = left < 6 * HOUR_MS ? '\u{1F534}' : (left < 24 * HOUR_MS ? '\u{1F7E1}' : '\u{1F7E2}');
@@ -91,7 +101,7 @@ function getContent(client, guildId, tcs, now) {
 
 /* What must change for the message to be edited: TCs, reachability and rounded expiry, colour band */
 function signature(tcs, now) {
-    return JSON.stringify(tcs.map(tc => [tc.id, tc.name, tc.location, tc.reachable,
+    return JSON.stringify(tcs.map(tc => [tc.id, tc.name, tc.location, tc.reachable, tc.status, tc.notConnected, tc.notRead,
         tc.breakdown ? tc.breakdown.add.map(a => `${a.key}${Math.round(a.amount / 1000)}`).join() : '',
         tc.expiry ? Math.ceil((tc.expiry * 1000 - now) / 60000) : 0,
         tc.expiry ? (tc.expiry * 1000 - now < 6 * HOUR_MS ? 2 : (tc.expiry * 1000 - now < 24 * HOUR_MS ? 1 : 0)) : -1]));
