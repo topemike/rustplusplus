@@ -169,6 +169,43 @@ class DiscordBot extends Discord.Client {
     }
 
     build() {
+        /* Slow Discord requests in the log, and a summary every 15 min: shows where Discord is slow */
+        try {
+            const rest = this.rest;
+            const original = rest.request.bind(rest);
+            const stats = { n: 0, slow: 0, max: 0, maxRoute: '', failed: 0, since: Date.now() };
+            const slowSeen = new Object();
+            rest.request = async (options) => {
+                const started = Date.now();
+                let failed = false;
+                try { return await original(options); }
+                catch (e) { failed = true; throw e; }
+                finally {
+                    const took = Date.now() - started;
+                    const route = `${options && options.method ? options.method : '?'} ` +
+                        `${String(options && options.fullRoute ? options.fullRoute : '?').replace(/\d{15,}/g, ':id')}`;
+                    stats.n++;
+                    if (failed) stats.failed++;
+                    if (took > stats.max) { stats.max = took; stats.maxRoute = route; }
+                    if (took > 10 * 1000) {
+                        stats.slow++;
+                        if (!slowSeen[route] || Date.now() - slowSeen[route] > 5 * 60 * 1000) {
+                            slowSeen[route] = Date.now();
+                            this.log(this.intlGet(null, 'warningCap'), `Discord slow: ${route} took ` +
+                                `${Math.round(took / 1000)} s${failed ? ' (failed)' : ''}.`, 'warning');
+                        }
+                    }
+                    if (Date.now() - stats.since > 15 * 60 * 1000) {
+                        this.log(this.intlGet(null, 'infoCap'), `Discord requests (15 min): ${stats.n}, ` +
+                            `slow (>10 s) ${stats.slow}, failed ${stats.failed}, slowest ${Math.round(stats.max / 1000)} s ` +
+                            `(${stats.maxRoute}).`);
+                        Object.assign(stats, { n: 0, slow: 0, max: 0, maxRoute: '', failed: 0, since: Date.now() });
+                    }
+                }
+            };
+        }
+        catch (e) { /* not available */ }
+
         /* Discord rate limits in the log (once a minute per route): they explain slow boards/messages */
         try {
             const seen = new Object();
