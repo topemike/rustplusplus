@@ -336,31 +336,30 @@ async function alarmAlarm(client, guild, title, message, body) {
 
     if (!server || (server && !server.alarms[entityId])) return;
 
-    const alarm = server.alarms[entityId];
+    let alarm = server.alarms[entityId];
     const connectedHere = !!rustplus && rustplus.serverId === serverId;
-    /* Handled by the rustplus broadcast (message.js) when the connection works */
-    if (connectedHere && rustplus.isOperational) return;
+    /* Handled by the rustplus broadcast (message.js) when the connection works. But a connection
+       can look open and not deliver anything (Rust+ hanging): if the broadcast has not come
+       a little later, the alarm is handled from here, so a raid is never missed. */
+    if (connectedHere && rustplus.isOperational) {
+        const nowS = Math.floor(Date.now() / 1000);
+        if (alarm.lastTrigger && nowS - alarm.lastTrigger <= FCM_ALARM_MATCH_S) return;   /* broadcast came first */
+        const before = alarm.lastTrigger;
+        await new Promise((resolve) => setTimeout(resolve, FCM_ALARM_WAIT_MS));
+        const again = client.getInstance(guild.id);
+        const s2 = again.serverList[serverId];
+        if (!s2 || !s2.alarms[entityId]) return;
+        if (s2.alarms[entityId].lastTrigger !== before) return;   /* the broadcast came meanwhile */
+        client.log(client.intlGet(null, 'warningCap'),
+            `Smart Alarm ${entityId}: phone notification but nothing from Rust+ after ` +
+            `${FCM_ALARM_WAIT_MS / 1000} s: handled from the notification.`, 'warning');
+        alarm = s2.alarms[entityId];
+        return await handleOnActiveServer(client, guild, again, serverId, entityId, alarm, title, message);
+    }
 
     const isActiveServer = instance.activeServer === serverId;
     if (isActiveServer) {
-        /* The bot should be connected to this server but the connection is down / not ready yet:
-           the alarm is not lost */
-        alarm.lastTrigger = Math.floor(new Date() / 1000);
-        client.setInstance(guild.id, instance);
-        try {
-            if (alarm.raidMode !== false) {
-                await require('../handlers/raidHandler.js').onAlarmTriggered(client, null, guild.id, serverId, entityId);
-            }
-            else {
-                await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId);
-            }
-        }
-        catch (e) {
-            client.log(client.intlGet(null, 'errorCap'), `Smart Alarm (FCM): ${e}`, 'error');
-            await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId).catch(() => { });
-        }
-        client.log(client.intlGet(null, 'infoCap'), `${title}: ${message}`);
-        return;
+        return await handleOnActiveServer(client, guild, instance, serverId, entityId, alarm, title, message);
     }
 
     if (!connectedHere && instance.generalSettings.fcmAlarmNotificationEnabled) {
@@ -369,6 +368,29 @@ async function alarmAlarm(client, guild, title, message, body) {
         await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId, server.alarms[entityId].everyone || instance.generalSettings.fcmAlarmNotificationEveryone);
         client.log(client.intlGet(null, 'infoCap'), `${title}: ${message}`);
     }
+}
+
+const FCM_ALARM_WAIT_MS = 15 * 1000;   /* how long the Rust+ broadcast may come after the phone notification */
+const FCM_ALARM_MATCH_S = 30;          /* a broadcast this recent is the same trigger */
+
+async function handleOnActiveServer(client, guild, instance, serverId, entityId, alarm, title, message) {
+    /* The bot should be connected to this server but the connection is down / not ready yet:
+       the alarm is not lost */
+    alarm.lastTrigger = Math.floor(new Date() / 1000);
+    client.setInstance(guild.id, instance);
+    try {
+        if (alarm.raidMode !== false) {
+            await require('../handlers/raidHandler.js').onAlarmTriggered(client, null, guild.id, serverId, entityId);
+        }
+        else {
+            await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId);
+        }
+    }
+    catch (e) {
+        client.log(client.intlGet(null, 'errorCap'), `Smart Alarm (FCM): ${e}`, 'error');
+        await DiscordMessages.sendSmartAlarmTriggerMessage(guild.id, serverId, entityId).catch(() => { });
+    }
+    client.log(client.intlGet(null, 'infoCap'), `${title}: ${message}`);
 }
 
 async function alarmRaidAlarm(client, guild, title, message, body) {
