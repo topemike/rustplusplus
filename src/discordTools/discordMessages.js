@@ -30,7 +30,51 @@ const DiscordSelectMenus = require('./discordSelectMenus.js');
 const DiscordTools = require('./discordTools.js');
 const Scrape = require('../util/scrape.js');
 
+/* A device deleted while its message was being sent: the new message must not stay behind */
+async function removeOrphan(guildId, message) {
+    try { if (message && typeof message.delete === 'function') await message.delete(); }
+    catch (e) { /* already gone */ }
+}
+
+const GONE = Symbol('gone');
+const SAME_CONTENT_REFRESH_MS = 10 * 60 * 1000;
+const editStates = new Object();
+
+/* What a message shows (embeds without their timestamp, buttons, image names) */
+function contentHash(content) {
+    try {
+        const plain = (x) => (x && typeof x.toJSON === 'function') ? x.toJSON() : x;
+        const embeds = (content.embeds || []).map(e => { const j = Object.assign({}, plain(e)); delete j.timestamp; return j; });
+        const components = (content.components || []).map(plain);
+        const files = (content.files || []).map(f => (f && (f.name || (f.attachment && Path.basename(String(f.attachment))))) || '?');
+        return JSON.stringify([content.content || null, embeds, components, files]);
+    }
+    catch (e) {
+        return `${Math.random()}`;  /* cannot compare: always send */
+    }
+}
+
+async function doEdit(guildId, channelId, messageId, content) {
+    if (DiscordTools.deletedByBot && DiscordTools.deletedByBot.has(`${messageId}`)) return undefined;
+    const message = await DiscordTools.getMessageById(guildId, channelId, messageId);
+    if (message === undefined) return GONE;
+    try {
+        return await message.edit(module.exports.withoutReuploads(message, content));
+    }
+    catch (e) {
+        if (e && e.code === 10008) {
+            /* The message was deleted (it was still cached): a new one is sent, its id is saved */
+            try { message.channel.messages.cache.delete(messageId); } catch (err) { /* not cached */ }
+            return GONE;
+        }
+        Client.client.log(Client.client.intlGet(null, 'errorCap'),
+            Client.client.intlGet(null, 'messageEditFailed', { error: e }), 'error');
+        return undefined;
+    }
+}
+
 module.exports = {
+    _editStates: editStates,
     /**
      *  Editing a message with the same images it already has: the images are not uploaded again
      *  (Discord keeps the attachments of a message when an edit does not mention them). Every edit
@@ -59,38 +103,80 @@ module.exports = {
 
     sendMessage: async function (guildId, content, messageId, channelId, interaction = null) {
         if (interaction) {
+            /* The message changed outside editMessage(): forget what was last sent to it */
+            try {
+                if (interaction.message) delete editStates[`${interaction.message.channelId}/${interaction.message.id}`];
+                if (messageId) delete editStates[`${channelId}/${messageId}`];
+            }
+            catch (e) { /* nothing remembered */ }
             await Client.client.interactionUpdate(interaction, content);
             return;
         }
 
-        let message = messageId !== null ?
-            await DiscordTools.getMessageById(guildId, channelId, messageId) : undefined;
+        if (messageId !== null && messageId !== undefined) {
+            /* Deleted on purpose by the bot (device removed): nothing to update, nothing to re-create */
+            if (DiscordTools.deletedByBot && DiscordTools.deletedByBot.has(`${messageId}`)) return undefined;
+            const edited = await module.exports.editMessage(guildId, channelId, messageId, content);
+            if (edited !== GONE) return edited;
+            if (DiscordTools.deletedByBot && DiscordTools.deletedByBot.has(`${messageId}`)) return undefined;
+        }
 
-        if (message !== undefined) {
-            try {
-                return await message.edit(module.exports.withoutReuploads(message, content));
+        const channel = DiscordTools.getTextChannelById(guildId, channelId);
+        if (!channel) {
+            Client.client.log(Client.client.intlGet(null, 'errorCap'),
+                Client.client.intlGet(null, 'couldNotGetChannelWithId', { id: channelId }), 'error');
+            return;
+        }
+        return await Client.client.messageSend(channel, content);
+    },
+
+    /**
+     *  Edits a message, with two rules that keep the number of Discord requests low (Discord answers
+     *  them one after another per channel; when more come in than it serves, they pile up for hours):
+     *  - an edit with exactly the same content as the last one is not sent (refreshed every 10 min);
+     *  - one edit at a time per message: edits that come while one is on its way are merged, only
+     *    the newest content is sent after it.
+     *  Returns GONE if the message no longer exists (a new one has to be sent).
+     */
+    editMessage: async function (guildId, channelId, messageId, content) {
+        const key = `${channelId}/${messageId}`;
+        const state = editStates[key] || (editStates[key] = { busy: false, next: null, waiters: [], hash: null, at: 0, message: null });
+        const hash = contentHash(content);
+
+        if (state.busy) {
+            state.next = { content, hash };
+            return await new Promise((resolve) => state.waiters.push(resolve));
+        }
+        if (state.hash === hash && state.message && Date.now() - state.at < SAME_CONTENT_REFRESH_MS) {
+            return state.message;
+        }
+
+        state.busy = true;
+        let result;
+        try {
+            result = await doEdit(guildId, channelId, messageId, content);
+            if (result && result !== GONE) {
+                state.hash = hash; state.at = Date.now(); state.message = result;
             }
-            catch (e) {
-                if (!(e && e.code === 10008)) {
-                    Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                        Client.client.intlGet(null, 'messageEditFailed', { error: e }), 'error');
-                    return undefined;
-                }
-                /* The message was deleted (it was still cached): send a new one, its id is saved */
-                try { message.channel.messages.cache.delete(messageId); } catch (err) { /* not cached */ }
+            else if (result === GONE) {
+                delete editStates[key];
             }
         }
-        {
-            const channel = DiscordTools.getTextChannelById(guildId, channelId);
-
-            if (!channel) {
-                Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                    Client.client.intlGet(null, 'couldNotGetChannelWithId', { id: channelId }), 'error');
-                return;
+        finally {
+            state.busy = false;
+            if (state.next && editStates[key] === state) {
+                const next = state.next, waiters = state.waiters;
+                state.next = null; state.waiters = [];
+                module.exports.editMessage(guildId, channelId, messageId, next.content).then(
+                    (r) => { for (const w of waiters) w(r); }, () => { for (const w of waiters) w(undefined); });
             }
-
-            return await Client.client.messageSend(channel, content);
+            else if (state.waiters.length) {
+                const waiters = state.waiters;
+                state.waiters = []; state.next = null;
+                for (const w of waiters) w(result);
+            }
         }
+        return result;
     },
 
     sendServerMessage: async function (guildId, serverId, state = null, interaction = null) {
@@ -114,6 +200,7 @@ module.exports = {
     sendTrackerMessage: async function (guildId, trackerId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
+        if (!tracker) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getTrackerEmbed(guildId, trackerId)],
@@ -124,14 +211,19 @@ module.exports = {
             instance.channelId.trackers, interaction);
 
         if (!interaction && message && message.id) {
-            instance.trackers[trackerId].messageId = message.id;
+            {
+                const target = instance.trackers && instance.trackers[trackerId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendSmartSwitchMessage: async function (guildId, serverId, entityId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].switches[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].switches[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [entity.reachable ?
@@ -150,14 +242,19 @@ module.exports = {
             instance.channelId.switches, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].switches[entityId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].switches && instance.serverList[serverId].switches[entityId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendSmartAlarmMessage: async function (guildId, serverId, entityId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].alarms[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].alarms[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [entity.reachable ?
@@ -172,14 +269,19 @@ module.exports = {
             instance.channelId.alarms, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].alarms[entityId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].alarms && instance.serverList[serverId].alarms[entityId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendStorageMonitorMessage: async function (guildId, serverId, entityId, interaction = null) {
         let instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [entity.reachable ?
@@ -199,14 +301,19 @@ module.exports = {
             instance.channelId.storageMonitors, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].storageMonitors[entityId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].storageMonitors && instance.serverList[serverId].storageMonitors[entityId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendSmartSwitchGroupMessage: async function (guildId, serverId, groupId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
-        const group = instance.serverList[serverId].switchGroups[groupId];
+        const group = instance.serverList[serverId] ? instance.serverList[serverId].switchGroups[groupId] : undefined;
+        if (!group) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getSmartSwitchGroupEmbed(guildId, serverId, groupId)],
@@ -219,7 +326,11 @@ module.exports = {
             instance.channelId.switchGroups, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].switchGroups[groupId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].switchGroups && instance.serverList[serverId].switchGroups[groupId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
@@ -239,7 +350,8 @@ module.exports = {
 
     sendDecayingNotificationMessage: async function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getDecayingNotificationEmbed(guildId, serverId, entityId)],
@@ -254,7 +366,8 @@ module.exports = {
 
     sendStorageMonitorDisconnectNotificationMessage: async function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getStorageMonitorDisconnectNotificationEmbed(guildId, serverId, entityId)],
@@ -271,7 +384,8 @@ module.exports = {
         /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'storageMonitor', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [await DiscordEmbeds.getStorageMonitorNotFoundEmbed(guildId, serverId, entityId)],
@@ -288,7 +402,8 @@ module.exports = {
         /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'switch', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].switches[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].switches[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [await DiscordEmbeds.getSmartSwitchNotFoundEmbed(guildId, serverId, entityId)],
@@ -304,7 +419,8 @@ module.exports = {
         /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'alarm', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].alarms[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].alarms[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [await DiscordEmbeds.getSmartAlarmNotFoundEmbed(guildId, serverId, entityId)],
@@ -320,7 +436,8 @@ module.exports = {
     /* everyone: null = the alarm's own @everyone setting; true/false forces it (fcmAlarmNotificationEveryone) */
     sendSmartAlarmTriggerMessage: async function (guildId, serverId, entityId, everyone = null) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].alarms[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].alarms[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
         const mention = everyone === null ? entity.everyone : everyone;
 
         const content = {

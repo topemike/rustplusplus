@@ -913,11 +913,11 @@ module.exports = async (client, interaction) => {
 
         await defer();
 
-        await DiscordTools.deleteMessageById(guildId, instance.channelId.switches,
-            server.switches[ids.entityId].messageId);
-
+        /* Removed from the bot first: an update on its way can no longer bring the message back */
+        const messageIdToDelete = server.switches[ids.entityId].messageId;
         delete server.switches[ids.entityId];
         client.setInstance(guildId, instance);
+        await DiscordTools.deleteMessageById(guildId, instance.channelId.switches, messageIdToDelete);
 
         SwitchTimers.clear(client, guildId, ids.entityId);
 
@@ -987,11 +987,11 @@ module.exports = async (client, interaction) => {
 
         await defer();
 
-        await DiscordTools.deleteMessageById(guildId, instance.channelId.alarms,
-            server.alarms[ids.entityId].messageId);
-
+        /* Removed from the bot first: an update on its way can no longer bring the message back */
+        const messageIdToDelete = server.alarms[ids.entityId].messageId;
         delete server.alarms[ids.entityId];
         client.setInstance(guildId, instance);
+        await DiscordTools.deleteMessageById(guildId, instance.channelId.alarms, messageIdToDelete);
     }
     else if (interaction.customId.startsWith('SmartAlarmEdit')) {
         const ids = CustomId.parse('SmartAlarmEdit', interaction.customId, instance);
@@ -1071,11 +1071,11 @@ module.exports = async (client, interaction) => {
 
         await defer();
 
-        await DiscordTools.deleteMessageById(guildId, instance.channelId.storageMonitors,
-            server.storageMonitors[ids.entityId].messageId);
-
+        /* Removed from the bot first: an update on its way can no longer bring the message back */
+        const messageIdToDelete = server.storageMonitors[ids.entityId].messageId;
         delete server.storageMonitors[ids.entityId];
         client.setInstance(guildId, instance);
+        await DiscordTools.deleteMessageById(guildId, instance.channelId.storageMonitors, messageIdToDelete);
     }
     else if (interaction.customId.startsWith('StorageMonitorRecycle')) {
         const ids = CustomId.parse('StorageMonitorRecycle', interaction.customId, instance);
@@ -1133,11 +1133,11 @@ module.exports = async (client, interaction) => {
 
         await defer();
 
-        await DiscordTools.deleteMessageById(guildId, instance.channelId.storageMonitors,
-            server.storageMonitors[ids.entityId].messageId);
-
+        /* Removed from the bot first: an update on its way can no longer bring the message back */
+        const messageIdToDelete = server.storageMonitors[ids.entityId].messageId;
         delete server.storageMonitors[ids.entityId];
         client.setInstance(guildId, instance);
+        await DiscordTools.deleteMessageById(guildId, instance.channelId.storageMonitors, messageIdToDelete);
     }
     else if (interaction.customId === 'RecycleDelete') {
         if (!client.canManage(interaction)) {
@@ -1221,11 +1221,11 @@ module.exports = async (client, interaction) => {
         await defer();
 
         if (server.switchGroups.hasOwnProperty(ids.groupId)) {
-            await DiscordTools.deleteMessageById(guildId, instance.channelId.switchGroups,
-                server.switchGroups[ids.groupId].messageId);
-
+            /* Removed from the bot first: an update on its way can no longer bring the message back */
+            const messageIdToDelete = server.switchGroups[ids.groupId].messageId;
             delete server.switchGroups[ids.groupId];
             client.setInstance(guildId, instance);
+            await DiscordTools.deleteMessageById(guildId, instance.channelId.switchGroups, messageIdToDelete);
         }
     }
     else if (interaction.customId.startsWith('GroupAddSwitch')) {
@@ -1491,11 +1491,11 @@ module.exports = async (client, interaction) => {
 
         await defer();
 
-        await DiscordTools.deleteMessageById(guildId, instance.channelId.trackers,
-            tracker.messageId);
-
+        /* Removed from the bot first: an update on its way can no longer bring the message back */
+        const messageIdToDelete = tracker.messageId;
         delete instance.trackers[ids.trackerId];
         client.setInstance(guildId, instance);
+        await DiscordTools.deleteMessageById(guildId, instance.channelId.trackers, messageIdToDelete);
     }
     else if (Config.battlemetrics.token !== '' && interaction.customId.startsWith('TrackerAddPlayer')) {
         const ids = CustomId.parse('TrackerAddPlayer', interaction.customId, instance);
