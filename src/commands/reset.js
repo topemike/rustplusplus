@@ -233,7 +233,7 @@ module.exports = {
 			} break;
 
 			case 'storagemonitors': {
-				await DiscordTools.clearTextChannel(guild.id, instance.channelId.storageMonitors, 100);
+				await DiscordTools.clearTextChannel(guild.id, instance.channelId.storageMonitors, 1000);
 
 				const perms = PermissionHandler.getPermissionsRemoved(client, guild);
 				try {
