@@ -55,6 +55,12 @@ module.exports = async (client, interaction) => {
         return;
     }
 
+    /* Discord gives 3 seconds to answer. The changes below update Discord messages afterwards, which
+       can take longer, so the form is acknowledged first (except the ones that answer with a message) */
+    const answersWithMessage = ['ServerEdit', 'TrackerAddPlayer', 'TrackerRemovePlayer', 'MarketBoardAdd']
+        .some(prefix => interaction.customId.startsWith(prefix));
+    if (!answersWithMessage) await defer();
+
     if (interaction.customId.startsWith('CustomTimersEdit')) {
         const ids = CustomId.parse('CustomTimersEdit', interaction.customId, instance);
         const server = instance.serverList[ids.serverId];
