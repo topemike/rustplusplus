@@ -30,6 +30,12 @@ const DiscordSelectMenus = require('./discordSelectMenus.js');
 const DiscordTools = require('./discordTools.js');
 const Scrape = require('../util/scrape.js');
 
+/* A device deleted while its message was being sent: the new message must not stay behind */
+async function removeOrphan(guildId, message) {
+    try { if (message && typeof message.delete === 'function') await message.delete(); }
+    catch (e) { /* already gone */ }
+}
+
 const GONE = Symbol('gone');
 const SAME_CONTENT_REFRESH_MS = 10 * 60 * 1000;
 const editStates = new Object();
@@ -49,6 +55,7 @@ function contentHash(content) {
 }
 
 async function doEdit(guildId, channelId, messageId, content) {
+    if (DiscordTools.deletedByBot && DiscordTools.deletedByBot.has(`${messageId}`)) return undefined;
     const message = await DiscordTools.getMessageById(guildId, channelId, messageId);
     if (message === undefined) return GONE;
     try {
@@ -107,8 +114,11 @@ module.exports = {
         }
 
         if (messageId !== null && messageId !== undefined) {
+            /* Deleted on purpose by the bot (device removed): nothing to update, nothing to re-create */
+            if (DiscordTools.deletedByBot && DiscordTools.deletedByBot.has(`${messageId}`)) return undefined;
             const edited = await module.exports.editMessage(guildId, channelId, messageId, content);
             if (edited !== GONE) return edited;
+            if (DiscordTools.deletedByBot && DiscordTools.deletedByBot.has(`${messageId}`)) return undefined;
         }
 
         const channel = DiscordTools.getTextChannelById(guildId, channelId);
@@ -190,6 +200,7 @@ module.exports = {
     sendTrackerMessage: async function (guildId, trackerId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
         const tracker = instance.trackers[trackerId];
+        if (!tracker) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getTrackerEmbed(guildId, trackerId)],
@@ -200,14 +211,19 @@ module.exports = {
             instance.channelId.trackers, interaction);
 
         if (!interaction && message && message.id) {
-            instance.trackers[trackerId].messageId = message.id;
+            {
+                const target = instance.trackers && instance.trackers[trackerId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendSmartSwitchMessage: async function (guildId, serverId, entityId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].switches[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].switches[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [entity.reachable ?
@@ -226,14 +242,19 @@ module.exports = {
             instance.channelId.switches, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].switches[entityId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].switches && instance.serverList[serverId].switches[entityId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendSmartAlarmMessage: async function (guildId, serverId, entityId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].alarms[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].alarms[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [entity.reachable ?
@@ -248,14 +269,19 @@ module.exports = {
             instance.channelId.alarms, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].alarms[entityId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].alarms && instance.serverList[serverId].alarms[entityId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendStorageMonitorMessage: async function (guildId, serverId, entityId, interaction = null) {
         let instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [entity.reachable ?
@@ -275,14 +301,19 @@ module.exports = {
             instance.channelId.storageMonitors, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].storageMonitors[entityId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].storageMonitors && instance.serverList[serverId].storageMonitors[entityId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
 
     sendSmartSwitchGroupMessage: async function (guildId, serverId, groupId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
-        const group = instance.serverList[serverId].switchGroups[groupId];
+        const group = instance.serverList[serverId] ? instance.serverList[serverId].switchGroups[groupId] : undefined;
+        if (!group) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getSmartSwitchGroupEmbed(guildId, serverId, groupId)],
@@ -295,7 +326,11 @@ module.exports = {
             instance.channelId.switchGroups, interaction);
 
         if (!interaction && message && message.id) {
-            instance.serverList[serverId].switchGroups[groupId].messageId = message.id;
+            {
+                const target = instance.serverList && instance.serverList[serverId] && instance.serverList[serverId].switchGroups && instance.serverList[serverId].switchGroups[groupId];
+                if (!target) { await removeOrphan(guildId, message); return; }
+                target.messageId = message.id;
+            }
             Client.client.setInstance(guildId, instance);
         }
     },
@@ -315,7 +350,8 @@ module.exports = {
 
     sendDecayingNotificationMessage: async function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getDecayingNotificationEmbed(guildId, serverId, entityId)],
@@ -330,7 +366,8 @@ module.exports = {
 
     sendStorageMonitorDisconnectNotificationMessage: async function (guildId, serverId, entityId) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [DiscordEmbeds.getStorageMonitorDisconnectNotificationEmbed(guildId, serverId, entityId)],
@@ -347,7 +384,8 @@ module.exports = {
         /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'storageMonitor', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].storageMonitors[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].storageMonitors[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [await DiscordEmbeds.getStorageMonitorNotFoundEmbed(guildId, serverId, entityId)],
@@ -364,7 +402,8 @@ module.exports = {
         /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'switch', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].switches[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].switches[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [await DiscordEmbeds.getSmartSwitchNotFoundEmbed(guildId, serverId, entityId)],
@@ -380,7 +419,8 @@ module.exports = {
         /* Only once the server, while on, confirms the device is missing (deviceNotices.js) */
         if (!force && !DeviceNotices.shouldSendNow(Client.client, guildId, 'alarm', serverId, entityId)) return;
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].alarms[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].alarms[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
 
         const content = {
             embeds: [await DiscordEmbeds.getSmartAlarmNotFoundEmbed(guildId, serverId, entityId)],
@@ -396,7 +436,8 @@ module.exports = {
     /* everyone: null = the alarm's own @everyone setting; true/false forces it (fcmAlarmNotificationEveryone) */
     sendSmartAlarmTriggerMessage: async function (guildId, serverId, entityId, everyone = null) {
         const instance = Client.client.getInstance(guildId);
-        const entity = instance.serverList[serverId].alarms[entityId];
+        const entity = instance.serverList[serverId] ? instance.serverList[serverId].alarms[entityId] : undefined;
+        if (!entity) return;   /* deleted meanwhile */
         const mention = everyone === null ? entity.everyone : everyone;
 
         const content = {

@@ -49,6 +49,9 @@ module.exports = {
                 if (instance.serverList[serverId].storageMonitors[entityId].type !== 'toolCupboard') continue;
                 if (!rustplus.storageMonitors.hasOwnProperty(entityId)) continue;
                 const info = await rustplus.getEntityInfoAsync(entityId);
+                /* Deleted while waiting for the answer */
+                if (!client.getInstance(guildId).serverList[serverId] ||
+                    !client.getInstance(guildId).serverList[serverId].storageMonitors[entityId]) continue;
                 if (!(await rustplus.isResponseValid(info))) continue;
                 const payload = info.entityInfo.payload;
                 if (payload.capacity !== Constants.STORAGE_MONITOR_TOOL_CUPBOARD_CAPACITY) continue;
@@ -64,6 +67,9 @@ module.exports = {
                 instance = client.getInstance(guildId);
 
                 const info = await rustplus.getEntityInfoAsync(entityId);
+                /* Deleted while waiting for the answer */
+                if (!client.getInstance(guildId).serverList[serverId] ||
+                    !client.getInstance(guildId).serverList[serverId].storageMonitors[entityId]) continue;
                 if (!rustplus.storageMonitorStatus) rustplus.storageMonitorStatus = new Object();
                 if (!(await rustplus.isResponseValid(info))) {
                     /* Only a clear "not found" from the server marks it as gone; a timeout, a busy server
