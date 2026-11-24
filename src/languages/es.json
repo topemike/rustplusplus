@@ -1130,5 +1130,6 @@
     "upkeepBoardMissing": "❌ **{name}**{where} · no existe en el juego: el storage monitor (o su TC) se ha destruido o quitado. Si ya no está, bórralo en el canal de storage monitors.",
     "upkeepBoardNoAccess": "🔒 **{name}**{where} · sin acceso: la cuenta de Steam del bot no está autorizada en este TC.",
     "upkeepBoardNotConnected": "🔌 **{name}**{where} · el storage monitor no está puesto en el TC (o no tiene corriente).",
-    "upkeepBoardNotRead": "⏳ **{name}**{where} · aún sin leer (espera unos minutos)."
+    "upkeepBoardNotRead": "⏳ **{name}**{where} · aún sin leer (espera unos minutos).",
+    "resetWorking": "En marcha: borrando los mensajes y volviendo a crearlos. Puede tardar unos minutos; este mensaje cambiará cuando termine."
 }
