@@ -19,6 +19,7 @@
 */
 
 const DiscordMessages = require('./discordMessages.js');
+const SwitchOverride = require('../util/switchOverride.js');
 const DiscordTools = require('./discordTools.js');
 
 module.exports = async (client, rustplus) => {
@@ -34,6 +35,7 @@ module.exports = async (client, rustplus) => {
         const entity = instance.serverList[serverId].switches[entityId];
         const info = await rustplus.getEntityInfoAsync(entityId);
 
+        const wasReachable = entity.reachable === true;
         if (!(await rustplus.isResponseValid(info))) {
             if (entity.reachable === true) {
                 await DiscordMessages.sendSmartSwitchNotFoundMessage(guildId, serverId, entityId);
@@ -44,7 +46,18 @@ module.exports = async (client, rustplus) => {
             entity.reachable = true;
         }
 
-        if (entity.reachable) entity.active = info.entityInfo.payload.value;
+        if (entity.reachable) {
+            const real = info.entityInfo.payload.value;
+            /* Changed while the bot was not connected: only a person can have done that, so in an
+               automatic mode (always on/off, proximity...) it counts as an order by hand, the same as a
+               change seen in game while connected. Otherwise ALWAYS ON would turn it back on at once. */
+            if (wasReachable && typeof entity.active === 'boolean' && typeof real === 'boolean' &&
+                entity.active !== real && SwitchOverride.setManual(entity, real)) {
+                rustplus.log(client.intlGet(null, 'infoCap'),
+                    `Switch ${entity.name} (${entityId}) changed while disconnected -> ${real ? 'ON' : 'OFF'}, kept as an order by hand.`);
+            }
+            entity.active = real;
+        }
 
         client.setInstance(guildId, instance);
 

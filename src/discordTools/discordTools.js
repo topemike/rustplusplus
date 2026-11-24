@@ -170,22 +170,31 @@ module.exports = {
     /* Messages the bot deleted on purpose: an update still on its way must not bring them back */
     deletedByBot: new Set(),
 
+    /* Returns true when the message is gone (deleted now or already deleted), false when Discord
+       could not be asked (it is still there and has to be deleted later) */
     deleteMessageById: async function (guildId, channelId, messageId) {
         if (messageId) {
             module.exports.deletedByBot.add(`${messageId}`);
             if (module.exports.deletedByBot.size > 5000) module.exports.deletedByBot.clear();
         }
-        const message = await module.exports.getMessageById(guildId, channelId, messageId);
+        if (!messageId) return true;
+        const unknown = (e) => e && (e.code === 10008 || e.code === 10003 || e.status === 404);
+        const channel = module.exports.getTextChannelById(guildId, channelId);
+        if (!channel) return true;   /* the channel itself is gone */
 
         try {
+            let message = await channel.messages.fetch(messageId);
+            if (message instanceof Map) message = message.get(messageId);
+            if (!message) return true;
             await message.delete();
+            return true;
         }
         catch (e) {
+            if (unknown(e)) return true;
             Client.client.log(Client.client.intlGet(null, 'errorCap'),
                 Client.client.intlGet(null, 'couldNotDeleteMessage', { message: messageId }), 'error');
-
+            return false;
         }
-        return undefined;
     },
 
     addCategory: async function (guildId, name) {

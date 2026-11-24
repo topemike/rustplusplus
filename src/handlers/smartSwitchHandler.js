@@ -87,8 +87,23 @@ module.exports = {
                     const real = info.entityInfo && info.entityInfo.payload ? info.entityInfo.payload.value : undefined;
                     const realChanged = typeof real === 'boolean' && sw.active !== real;
                     if (!sw.reachable || realChanged) {
+                        const wasReachable = sw.reachable === true;
                         sw.reachable = true;
-                        if (realChanged) sw.active = real;
+                        if (realChanged) {
+                            /* Not a change of the bot (none pending for it): a person did it (in game
+                               while the bot was not connected, or an event that was missed). In an
+                               automatic mode it counts as an order by hand, as when seen in game. */
+                            const id = `${entityId}`;
+                            const botPending = (rustplus.botSwitchChanges && rustplus.botSwitchChanges[id]) ||
+                                (Array.isArray(rustplus.interactionSwitches) &&
+                                    rustplus.interactionSwitches.some(e => `${e}` === id));
+                            if (wasReachable && typeof sw.active === 'boolean' && !botPending &&
+                                SwitchOverride.setManual(sw, real)) {
+                                rustplus.log(client.intlGet(null, 'infoCap'),
+                                    `Switch ${sw.name} (${entityId}) was changed by someone -> ${real ? 'ON' : 'OFF'}, kept as an order by hand.`);
+                            }
+                            sw.active = real;
+                        }
                         client.setInstance(guildId, instance);
 
                         await safe(client, DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId));
@@ -553,7 +568,8 @@ module.exports = {
 
         let active;
         if (command.startsWith(`${entityCommand} ${onEn}`) || command.startsWith(`${entityCommand} ${onLang}`)) {
-            if (!switches[entityId].active) {
+            if (!switches[entityId].active || Timer.getSecondsFromStringTime(rest) !== null) {
+                /* Already like that but with a time ("on 2m"): the time still counts, then back */
                 active = true;
             }
             else {
@@ -566,7 +582,8 @@ module.exports = {
             }
         }
         else if (command.startsWith(`${entityCommand} ${offEn}`) || command.startsWith(`${entityCommand} ${offLang}`)) {
-            if (switches[entityId].active) {
+            if (switches[entityId].active || Timer.getSecondsFromStringTime(rest) !== null) {
+                /* Already like that but with a time ("on 2m"): the time still counts, then back */
                 active = false;
             }
             else {
