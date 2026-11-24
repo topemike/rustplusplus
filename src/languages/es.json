@@ -1126,5 +1126,9 @@
     "camProbeFov": ", ángulo vertical {fov}°",
     "camProbePlayers": "👤 Jugadores a la vista: {players}.",
     "camProbeNoPlayers": "👤 Ningún jugador a la vista ahora mismo.",
-    "camProbeNoImage": "⚠️ La cámara no mandó imagen: puede que el server tenga limitadas las cámaras en Rust+."
+    "camProbeNoImage": "⚠️ La cámara no mandó imagen: puede que el server tenga limitadas las cámaras en Rust+.",
+    "upkeepBoardMissing": "❌ **{name}**{where} · no existe en el juego: el storage monitor (o su TC) se ha destruido o quitado. Si ya no está, bórralo en el canal de storage monitors.",
+    "upkeepBoardNoAccess": "🔒 **{name}**{where} · sin acceso: la cuenta de Steam del bot no está autorizada en este TC.",
+    "upkeepBoardNotConnected": "🔌 **{name}**{where} · el storage monitor no está puesto en el TC (o no tiene corriente).",
+    "upkeepBoardNotRead": "⏳ **{name}**{where} · aún sin leer (espera unos minutos)."
 }

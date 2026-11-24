@@ -22,6 +22,7 @@ const Constants = require('../util/constants.js');
 const UpkeepClock = require('../util/upkeepClock.js');
 const BaseWatchHandler = require('./baseWatchHandler.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const DeviceNotices = require('../util/deviceNotices.js');
 
 module.exports = {
     handler: async function (rustplus, client) {
@@ -63,13 +64,28 @@ module.exports = {
                 instance = client.getInstance(guildId);
 
                 const info = await rustplus.getEntityInfoAsync(entityId);
+                if (!rustplus.storageMonitorStatus) rustplus.storageMonitorStatus = new Object();
                 if (!(await rustplus.isResponseValid(info))) {
-                    if (instance.serverList[serverId].storageMonitors[entityId].reachable) {
-                        await DiscordMessages.sendStorageMonitorNotFoundMessage(guildId, serverId, entityId);
+                    /* Only a clear "not found" from the server marks it as gone; a timeout, a busy server
+                       or our own request limit says nothing about the monitor (the last data is kept) */
+                    const state = DeviceNotices.classify(info, client);
+                    const error = info && typeof info.error === 'string' ? info.error : null;
+                    rustplus.storageMonitorStatus[entityId] = state === 'missing' ? 'missing' :
+                        (error === 'access_denied' ? 'noAccess' : 'noAnswer');
+                    if (state === 'missing' || error === 'access_denied') {
+                        if (state === 'missing' && instance.serverList[serverId].storageMonitors[entityId].reachable) {
+                            await DiscordMessages.sendStorageMonitorNotFoundMessage(guildId, serverId, entityId);
+                        }
+                        instance.serverList[serverId].storageMonitors[entityId].reachable = false;
                     }
-                    instance.serverList[serverId].storageMonitors[entityId].reachable = false;
+                    client.setInstance(guildId, instance);
+                    if (state === 'missing' || error === 'access_denied') {
+                        await DiscordMessages.sendStorageMonitorMessage(guildId, serverId, entityId);
+                    }
+                    continue;
                 }
                 else {
+                    rustplus.storageMonitorStatus[entityId] = 'ok';
                     instance.serverList[serverId].storageMonitors[entityId].reachable = true;
                 }
                 client.setInstance(guildId, instance);

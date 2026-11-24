@@ -31,6 +31,32 @@ const DiscordTools = require('./discordTools.js');
 const Scrape = require('../util/scrape.js');
 
 module.exports = {
+    /**
+     *  Editing a message with the same images it already has: the images are not uploaded again
+     *  (Discord keeps the attachments of a message when an edit does not mention them). Every edit
+     *  used to upload the thumbnails again, which made each edit much slower.
+     */
+    withoutReuploads: function (message, content) {
+        try {
+            if (!content || !Array.isArray(content.files) || content.files.length === 0 || content.attachments) {
+                return content;
+            }
+            const have = new Set();
+            if (message.attachments && typeof message.attachments.values === 'function') {
+                for (const a of message.attachments.values()) if (a && a.name) have.add(a.name);
+            }
+            if (have.size !== content.files.length) return content;
+            const names = content.files.map(f => (f && (f.name || (f.attachment && Path.basename(String(f.attachment))))) || null);
+            if (names.some(n => !n || !have.has(n))) return content;
+            const rest = Object.assign({}, content);
+            delete rest.files;
+            return rest;
+        }
+        catch (e) {
+            return content;
+        }
+    },
+
     sendMessage: async function (guildId, content, messageId, channelId, interaction = null) {
         if (interaction) {
             await Client.client.interactionUpdate(interaction, content);
@@ -42,7 +68,7 @@ module.exports = {
 
         if (message !== undefined) {
             try {
-                return await message.edit(content);
+                return await message.edit(module.exports.withoutReuploads(message, content));
             }
             catch (e) {
                 if (!(e && e.code === 10008)) {
