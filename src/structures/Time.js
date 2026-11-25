@@ -152,10 +152,10 @@ class Time {
         const seconds = (now - last.t) / 1000;
         let hours = time.time - last.time;
         if (hours < 0) hours += 24;
-        if (seconds < 5 || seconds > 120 || hours <= 0 || hours > 1) return;
+        if (seconds < 5 || seconds > 120 || hours <= 0 || hours > 1) { this._binAcc = null; return; }
         const wasDay = last.time >= this.sunrise && last.time < this.sunset;
         const isDay = time.time >= time.sunrise && time.time < time.sunset;
-        if (wasDay !== isDay) return;
+        if (wasDay !== isDay) { if (this._speed && this._binAcc) this.closeBin(this._binAcc); return; }
 
         if (!this._speed) this._speed = this.loadSpeed();
         const key = isDay ? 'day' : 'night';
@@ -165,12 +165,26 @@ class Time {
 
         /* The clock does not go at the same speed all day (Rust's time curve: faster in the morning and
            evening, slower at midday): the speed is also learned per half hour of game time */
+        /* Day and night kept apart: the half hour where the sun sets (or rises) has some day and some
+           night in it, and the night goes much faster; mixed, the end of the day looked faster than
+           it is and the night was announced too early */
         if (!this._speed.bins) this._speed.bins = new Array(Time.BINS).fill(null);
+        if (!this._speed.nightBins) this._speed.nightBins = new Array(Time.BINS).fill(null);
+        /* The speed of a half hour is the whole half hour (game hours / real seconds spent in it), not
+           its last readings: the speed changes inside it too */
         let mid = last.time + hours / 2;
         if (mid >= 24) mid -= 24;
         const bin = Math.floor(mid * Time.BINS / 24) % Time.BINS;
-        const oldBin = this._speed.bins[bin];
-        this._speed.bins[bin] = oldBin ? oldBin * 0.7 + rate * 0.3 : rate;
+        const acc = this._binAcc;
+        if (acc && (acc.bin !== bin || acc.isDay !== isDay)) this.closeBin(acc);
+        if (!this._binAcc || this._binAcc.bin !== bin || this._binAcc.isDay !== isDay) {
+            this._binAcc = { bin, isDay, hours: 0, seconds: 0 };
+        }
+        this._binAcc.hours += hours;
+        this._binAcc.seconds += seconds;
+        /* First time here: a first value at once (the whole half hour is folded in when it ends) */
+        const binsOfSide = isDay ? this._speed.bins : this._speed.nightBins;
+        if (!binsOfSide[bin]) binsOfSide[bin] = rate;
         if (!this._speedSavedAt || now - this._speedSavedAt > 5 * 60 * 1000) {
             this._speedSavedAt = now;
             try {
@@ -185,30 +199,54 @@ class Time {
         }
     }
 
+    /* A half hour is over: what was measured in it goes into its learned speed */
+    closeBin(acc) {
+        this._binAcc = null;
+        const step = 24 / Time.BINS;
+        if (!acc || acc.seconds <= 0 || acc.hours < step * 0.2) return;   /* too little of it seen */
+        const binsOfSide = acc.isDay ? this._speed.bins : this._speed.nightBins;
+        const rate = acc.hours / acc.seconds;
+        const old = binsOfSide[acc.bin];
+        binsOfSide[acc.bin] = old ? old * 0.5 + rate * 0.5 : rate;
+    }
+
     loadSpeed() {
         try {
             const instance = this.client.getInstance(this.rustplus.guildId);
             const server = instance.serverList[this.rustplus.serverId];
             if (server && server.daySpeed) {
-                const bins = Array.isArray(server.daySpeed.bins) && server.daySpeed.bins.length === Time.BINS ?
-                    server.daySpeed.bins : new Array(Time.BINS).fill(null);
-                return { day: server.daySpeed.day || null, night: server.daySpeed.night || null, bins: bins };
+                const ok = (b) => Array.isArray(b) && b.length === Time.BINS;
+                const bins = ok(server.daySpeed.bins) ? server.daySpeed.bins.slice() : new Array(Time.BINS).fill(null);
+                let nightBins = ok(server.daySpeed.nightBins) ? server.daySpeed.nightBins.slice() : null;
+                if (!nightBins) {
+                    /* Saved before day and night were kept apart: the night half hours go to the night,
+                       and the half hours with sunrise or sunset in them (day and night mixed) are
+                       learned again */
+                    nightBins = new Array(Time.BINS).fill(null);
+                    const step = 24 / Time.BINS;
+                    for (let b = 0; b < Time.BINS; b++) {
+                        const from = b * step, to = from + step;
+                        const mixed = [this.sunrise, this.sunset].some(x => typeof x === 'number' && x > from && x < to);
+                        const mid = from + step / 2;
+                        const night = !(mid >= this.sunrise && mid < this.sunset);
+                        if (mixed) bins[b] = null;
+                        else if (night) { nightBins[b] = bins[b]; bins[b] = null; }
+                    }
+                }
+                return { day: server.daySpeed.day || null, night: server.daySpeed.night || null, bins, nightBins };
             }
         }
         catch (e) { /* none saved */ }
-        return { day: null, night: null, bins: new Array(Time.BINS).fill(null) };
+        return { day: null, night: null, bins: new Array(Time.BINS).fill(null), nightBins: new Array(Time.BINS).fill(null) };
     }
 
     /* Speed at a game time: learned for that half hour, else the nearest learned half hours of the same
        part (day / night), else the average of that part */
     rateAt(gameTime, isDay) {
-        const bins = this._speed.bins || [];
+        const bins = (isDay ? this._speed.bins : this._speed.nightBins) || [];
         const bin = Math.floor(gameTime * Time.BINS / 24) % Time.BINS;
         if (bins[bin]) return bins[bin];
-        const sameSide = (b) => {
-            const t = (b + 0.5) * 24 / Time.BINS;
-            return isDay === (t >= this.sunrise && t < this.sunset);
-        };
+        const sameSide = () => true;   /* each list only has speeds of its own part (day / night) */
         for (let d = 1; d <= 4; d++) {
             const a = (bin + d) % Time.BINS, b = (bin - d + Time.BINS) % Time.BINS;
             const ra = bins[a] && sameSide(a) ? bins[a] : null, rb = bins[b] && sameSide(b) ? bins[b] : null;
