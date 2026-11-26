@@ -207,7 +207,10 @@ class Time {
         const binsOfSide = acc.isDay ? this._speed.bins : this._speed.nightBins;
         const rate = acc.hours / acc.seconds;
         const old = binsOfSide[acc.bin];
-        binsOfSide[acc.bin] = old ? old * 0.5 + rate * 0.5 : rate;
+        const tag = `${acc.isDay ? 'd' : 'n'}${acc.bin}`;
+        const fromOldVersion = Array.isArray(this._speed.oldBins) && this._speed.oldBins.includes(tag);
+        if (fromOldVersion) this._speed.oldBins = this._speed.oldBins.filter(x => x !== tag);
+        binsOfSide[acc.bin] = old && !fromOldVersion ? old * 0.5 + rate * 0.5 : rate;
     }
 
     loadSpeed() {
@@ -218,6 +221,10 @@ class Time {
                 const ok = (b) => Array.isArray(b) && b.length === Time.BINS;
                 const bins = ok(server.daySpeed.bins) ? server.daySpeed.bins.slice() : new Array(Time.BINS).fill(null);
                 let nightBins = ok(server.daySpeed.nightBins) ? server.daySpeed.nightBins.slice() : null;
+                /* Speeds learned by the old version were biased to the end of each half hour: the first
+                   whole half hour measured replaces them (instead of averaging), so it is right after
+                   one game day instead of several */
+                let oldBins = Array.isArray(server.daySpeed.oldBins) ? server.daySpeed.oldBins.slice() : null;
                 if (!nightBins) {
                     /* Saved before day and night were kept apart: the night half hours go to the night,
                        and the half hours with sunrise or sunset in them (day and night mixed) are
@@ -232,8 +239,11 @@ class Time {
                         if (mixed) bins[b] = null;
                         else if (night) { nightBins[b] = bins[b]; bins[b] = null; }
                     }
+                    oldBins = [...bins.map((r, b) => r ? `d${b}` : null), ...nightBins.map((r, b) => r ? `n${b}` : null)]
+                        .filter(Boolean);
                 }
-                return { day: server.daySpeed.day || null, night: server.daySpeed.night || null, bins, nightBins };
+                return { day: server.daySpeed.day || null, night: server.daySpeed.night || null, bins, nightBins,
+                    oldBins: oldBins || [] };
             }
         }
         catch (e) { /* none saved */ }
